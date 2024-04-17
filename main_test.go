@@ -1,4 +1,4 @@
-package biliapi
+package biliApi
 
 import (
 	"testing"

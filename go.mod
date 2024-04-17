@@ -1,4 +1,4 @@
-module github.com/qydysky/biliapi
+module github.com/qydysky/biliApi
 
 go 1.22.2
 
