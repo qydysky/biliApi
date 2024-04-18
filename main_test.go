@@ -3,14 +3,13 @@ package biliApi
 import (
 	"testing"
 
-	f "github.com/qydysky/bili_danmu/F"
 	cmp "github.com/qydysky/part/component2"
 	pool "github.com/qydysky/part/pool"
 	reqf "github.com/qydysky/part/reqf"
 )
 
 func TestMain(t *testing.T) {
-	var api = cmp.Get[f.BiliApi](pkgId)
+	var api = cmp.Get[biliApiInter](pkgId)
 
 	var reqPool = pool.New(
 		pool.PoolFunc[reqf.Req]{

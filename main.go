@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	f "github.com/qydysky/bili_danmu/F"
 	cmp "github.com/qydysky/part/component2"
 	part "github.com/qydysky/part/pool"
 	reqf "github.com/qydysky/part/reqf"
@@ -14,9 +13,15 @@ import (
 const pkgId = "github.com/qydysky/bili_danmu/F"
 
 func init() {
-	if e := cmp.Register[f.BiliApi](pkgId, &biliApi{}); e != nil {
+	if e := cmp.Register[biliApiInter](pkgId, &biliApi{}); e != nil {
 		panic(e)
 	}
+}
+
+type biliApiInter interface {
+	SetProxy(proxy string)
+	LoginQrCode(pool *part.Buf[reqf.Req]) (err error, imgUrl string, QrcodeKey string)
+	LoginQrPoll(pool *part.Buf[reqf.Req], QrcodeKey string) (err error, cookies []*http.Cookie)
 }
 
 type biliApi struct {
@@ -64,9 +69,8 @@ func (t *biliApi) LoginQrPoll(pool *part.Buf[reqf.Req], QrcodeKey string) (err e
 	return
 }
 
-func (t *biliApi) Proxy(proxy string) f.BiliApi {
+func (t *biliApi) SetProxy(proxy string) {
 	t.proxy = proxy
-	return t
 }
 
 func (t *biliApi) LoginQrCode(pool *part.Buf[reqf.Req]) (err error, imgUrl string, QrcodeKey string) {
