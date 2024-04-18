@@ -9,8 +9,6 @@ import (
 )
 
 func TestMain(t *testing.T) {
-	var api = cmp.Get[biliApiInter](pkgId)
-
 	var reqPool = pool.New(
 		pool.PoolFunc[reqf.Req]{
 			New: func() *reqf.Req {
@@ -28,10 +26,22 @@ func TestMain(t *testing.T) {
 		},
 		100,
 	)
+	var api = cmp.Get(pkgId, func(bai biliApiInter) biliApiInter {
+		bai.SetReqPool(reqPool)
+		return bai
+	})
 
-	if err, _, QrcodeKey := api.LoginQrCode(reqPool); err != nil {
+	if err, _, QrcodeKey := api.LoginQrCode(); err != nil {
 		t.Fatal(err)
-	} else if err, _ := api.LoginQrPoll(reqPool, QrcodeKey); err != nil {
+	} else if err, _ := api.LoginQrPoll(QrcodeKey); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _, _, _, _, _, _, _, _ := api.GetRoomBaseInfo(213); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _, _, _, _, _, _, _, _, _, _, _ := api.GetInfoByRoom(213); err != nil {
 		t.Fatal(err)
 	}
 }
