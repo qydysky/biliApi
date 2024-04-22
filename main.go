@@ -10,31 +10,150 @@ import (
 
 	cmp "github.com/qydysky/part/component2"
 	part "github.com/qydysky/part/pool"
+	pool "github.com/qydysky/part/pool"
 	reqf "github.com/qydysky/part/reqf"
 )
 
-const pkgId = "github.com/qydysky/bili_danmu/F"
+const id = "github.com/qydysky/bili_danmu/F.biliApi"
 
 func init() {
-	if e := cmp.Register[biliApiInter](pkgId, &biliApi{}); e != nil {
+	if e := cmp.Register[biliApiInter](id, &biliApi{}); e != nil {
 		panic(e)
 	}
 }
 
-type biliApiInter interface {
-	SetReqPool(pool *part.Buf[reqf.Req])
-	SetProxy(proxy string)
-	SetCookies(cookies []*http.Cookie)
-	LoginQrCode() (err error, imgUrl string, QrcodeKey string)
-	LoginQrPoll(QrcodeKey string) (err error, cookies []*http.Cookie)
-	GetRoomBaseInfo(Roomid int) (err error, upUid int, uname string, parentAreaID int, areaID int, title string, liveStartTime time.Time, liveing bool, roomID int)
-	GetInfoByRoom(Roomid int) (err error, upUid int, uname string, parentAreaID int, areaID int, title string, liveStartTime time.Time, liveing bool, roomID int, GuardNum int, Note string, Locked bool)
-}
-
 type biliApi struct {
 	proxy   string
-	pool    *part.Buf[reqf.Req]
+	pool    *pool.Buf[reqf.Req]
 	cookies []*http.Cookie
+}
+
+// GetRoomPlayInfo implements biliApiInter.
+func (t *biliApi) GetRoomPlayInfo(Roomid int) (err error, res struct {
+	UpUid         int
+	RoomID        int
+	LiveStartTime time.Time
+	Liveing       bool
+	Streams       []struct {
+		ProtocolName string
+		Format       []struct {
+			FormatName string
+			Codec      []struct {
+				CodecName string
+				CurrentQn int
+				AcceptQn  []int
+				BaseURL   string
+				URLInfo   []struct {
+					Host      string
+					Extra     string
+					StreamTTL int
+				}
+				HdrQn     any
+				DolbyType int
+				AttrName  string
+			}
+		}
+	}
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&qn=0&platform=web&ptype=8&dolby=5&panorama=1&room_id=%d", Roomid),
+		Header: map[string]string{
+			`Referer`: fmt.Sprintf("https://live.bilibili.com/", Roomid),
+			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			RoomID          int   `json:"room_id"`
+			ShortID         int   `json:"short_id"`
+			UID             int   `json:"uid"`
+			IsHidden        bool  `json:"is_hidden"`
+			IsLocked        bool  `json:"is_locked"`
+			IsPortrait      bool  `json:"is_portrait"`
+			LiveStatus      int   `json:"live_status"`
+			HiddenTill      int   `json:"hidden_till"`
+			LockTill        int   `json:"lock_till"`
+			Encrypted       bool  `json:"encrypted"`
+			PwdVerified     bool  `json:"pwd_verified"`
+			LiveTime        int   `json:"live_time"`
+			RoomShield      int   `json:"room_shield"`
+			AllSpecialTypes []int `json:"all_special_types"`
+			PlayurlInfo     struct {
+				ConfJSON string `json:"conf_json"`
+				Playurl  struct {
+					Cid     int `json:"cid"`
+					GQnDesc []struct {
+						Qn       int         `json:"qn"`
+						Desc     string      `json:"desc"`
+						HdrDesc  string      `json:"hdr_desc"`
+						AttrDesc interface{} `json:"attr_desc"`
+					} `json:"g_qn_desc"`
+					Stream []struct {
+						ProtocolName string `json:"protocol_name"`
+						Format       []struct {
+							FormatName string `json:"format_name"`
+							Codec      []struct {
+								CodecName string `json:"codec_name"`
+								CurrentQn int    `json:"current_qn"`
+								AcceptQn  []int  `json:"accept_qn"`
+								BaseURL   string `json:"base_url"`
+								URLInfo   []struct {
+									Host      string `json:"host"`
+									Extra     string `json:"extra"`
+									StreamTTL int    `json:"stream_ttl"`
+								} `json:"url_info"`
+								HdrQn     interface{} `json:"hdr_qn"`
+								DolbyType int         `json:"dolby_type"`
+								AttrName  string      `json:"attr_name"`
+							} `json:"codec"`
+						} `json:"format"`
+					} `json:"stream"`
+					P2PData struct {
+						P2P      bool        `json:"p2p"`
+						P2PType  int         `json:"p2p_type"`
+						MP2P     bool        `json:"m_p2p"`
+						MServers interface{} `json:"m_servers"`
+					} `json:"p2p_data"`
+					DolbyQn interface{} `json:"dolby_qn"`
+				} `json:"playurl"`
+			} `json:"playurl_info"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	//主播uid
+	res.UpUid = j.Data.UID
+	//房间号（完整）
+	res.RoomID = j.Data.RoomID
+	//直播开始时间
+	if j.Data.LiveTime != 0 {
+		res.LiveStartTime = time.Unix(int64(j.Data.LiveTime), 0)
+	}
+	//是否在直播
+	res.Liveing = j.Data.LiveStatus == 1
+
+	//当前直播流
+	res.Streams = Streams(j.Data.PlayurlInfo.Playurl.Stream)
+	return
 }
 
 // SetCookies implements biliApiInter.
@@ -43,7 +162,19 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 }
 
 // GetInfoByRoom implements biliApiInter.
-func (t *biliApi) GetInfoByRoom(Roomid int) (err error, upUid int, uname string, parentAreaID int, areaID int, title string, liveStartTime time.Time, liveing bool, roomID int, GuardNum int, Note string, Locked bool) {
+func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
+	UpUid         int
+	Uname         string
+	ParentAreaID  int
+	AreaID        int
+	Title         string
+	LiveStartTime time.Time
+	Liveing       bool
+	RoomID        int
+	GuardNum      int
+	Note          string
+	Locked        bool
+}) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -459,33 +590,33 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, upUid int, uname string,
 
 		//直播开始时间
 		if j.Data.RoomInfo.LiveStartTime != 0 {
-			liveStartTime = time.Unix(int64(j.Data.RoomInfo.LiveStartTime), 0)
+			res.LiveStartTime = time.Unix(int64(j.Data.RoomInfo.LiveStartTime), 0)
 		}
 		//是否在直播
-		liveing = j.Data.RoomInfo.LiveStatus == 1
+		res.Liveing = j.Data.RoomInfo.LiveStatus == 1
 		//直播间标题
-		title = j.Data.RoomInfo.Title
+		res.Title = j.Data.RoomInfo.Title
 		//主播名
-		uname = j.Data.AnchorInfo.BaseInfo.Uname
+		res.Uname = j.Data.AnchorInfo.BaseInfo.Uname
 		//分区
-		parentAreaID = j.Data.RoomInfo.ParentAreaID
+		res.ParentAreaID = j.Data.RoomInfo.ParentAreaID
 		//子分区
-		areaID = j.Data.RoomInfo.AreaID
+		res.AreaID = j.Data.RoomInfo.AreaID
 		//主播id
-		upUid = j.Data.RoomInfo.UID
+		res.UpUid = j.Data.RoomInfo.UID
 		//房间id
-		roomID = j.Data.RoomInfo.RoomID
+		res.RoomID = j.Data.RoomInfo.RoomID
 		//舰长数
-		GuardNum = j.Data.GuardInfo.Count
+		res.GuardNum = j.Data.GuardInfo.Count
 		//分区排行
-		Note = j.Data.PopularRankInfo.RankName + " "
+		res.Note = j.Data.PopularRankInfo.RankName + " "
 		if rank := j.Data.PopularRankInfo.Rank; rank > 50 || rank == 0 {
-			Note += "100+"
+			res.Note += "100+"
 		} else {
-			Note += strconv.Itoa(rank)
+			res.Note += strconv.Itoa(rank)
 		}
 		//直播间是否被封禁
-		Locked = j.Data.RoomInfo.LockStatus == 1
+		res.Locked = j.Data.RoomInfo.LockStatus == 1
 	}
 	return
 }
@@ -495,7 +626,16 @@ func (t *biliApi) SetReqPool(pool *part.Buf[reqf.Req]) {
 }
 
 // GetRoomBaseInfo implements biliApiInter.
-func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, upUid int, uname string, parentAreaID int, areaID int, title string, liveStartTime time.Time, liveing bool, roomID int) {
+func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
+	UpUid         int
+	Uname         string
+	ParentAreaID  int
+	AreaID        int
+	Title         string
+	LiveStartTime time.Time
+	Liveing       bool
+	RoomID        int
+}) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 
@@ -555,23 +695,23 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, upUid int, uname strin
 		for _, data := range j.Data.ByRoomIds {
 			if Roomid == data.RoomID || Roomid == data.ShortID {
 				//主播id
-				upUid = data.UID
+				res.UpUid = data.UID
 				//子分区
-				areaID = data.AreaID
+				res.AreaID = data.AreaID
 				//分区
-				parentAreaID = data.ParentAreaID
+				res.ParentAreaID = data.ParentAreaID
 				//直播间标题
-				title = data.Title
+				res.Title = data.Title
 				//直播开始时间
 				if ti, e := time.Parse(time.DateTime, data.LiveTime); e != nil && !ti.IsZero() {
-					liveStartTime = ti
+					res.LiveStartTime = ti
 				}
 				//是否在直播
-				liveing = data.LiveStatus == 1
+				res.Liveing = data.LiveStatus == 1
 				//主播名
-				uname = data.Uname
+				res.Uname = data.Uname
 				//房间id
-				roomID = data.RoomID
+				res.RoomID = data.RoomID
 				return
 			}
 		}
