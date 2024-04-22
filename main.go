@@ -60,7 +60,7 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int) (err error, res struct {
 	err = req.Reqf(reqf.Rval{
 		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&qn=0&platform=web&ptype=8&dolby=5&panorama=1&room_id=%d", Roomid),
 		Header: map[string]string{
-			`Referer`: fmt.Sprintf("https://live.bilibili.com/", Roomid),
+			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
 		},
 		Proxy:   t.proxy,
