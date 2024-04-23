@@ -28,8 +28,71 @@ type biliApi struct {
 	cookies []*http.Cookie
 }
 
+// GetDanmuInfo implements biliApiInter.
+func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
+	Token string
+	WSURL []string
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?type=0&id=%d", Roomid),
+		Header: map[string]string{
+			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
+			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			Group            string  `json:"group"`
+			BusinessID       int     `json:"business_id"`
+			RefreshRowFactor float64 `json:"refresh_row_factor"`
+			RefreshRate      int     `json:"refresh_rate"`
+			MaxDelay         int     `json:"max_delay"`
+			Token            string  `json:"token"`
+			HostList         []struct {
+				Host    string `json:"host"`
+				Port    int    `json:"port"`
+				WssPort int    `json:"wss_port"`
+				WsPort  int    `json:"ws_port"`
+			} `json:"host_list"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	//弹幕钥
+	res.Token = j.Data.Token
+	//弹幕链接
+	var tmp []string
+	for _, v := range j.Data.HostList {
+		if v.WssPort != 443 {
+			tmp = append(tmp, "wss://"+v.Host+":"+strconv.Itoa(v.WssPort)+"/sub")
+		} else {
+			tmp = append(tmp, "wss://"+v.Host+"/sub")
+		}
+	}
+	res.WSURL = tmp
+	return
+}
+
 // GetRoomPlayInfo implements biliApiInter.
-func (t *biliApi) GetRoomPlayInfo(Roomid int) (err error, res struct {
+func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 	UpUid         int
 	RoomID        int
 	LiveStartTime time.Time
@@ -58,7 +121,7 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int) (err error, res struct {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
-		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&qn=0&platform=web&ptype=8&dolby=5&panorama=1&room_id=%d", Roomid),
+		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&qn=%d&platform=web&ptype=8&dolby=5&panorama=1&room_id=%d", Qn, Roomid),
 		Header: map[string]string{
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
@@ -177,7 +240,19 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int) (err error, res struct {
 
 // SetCookies implements biliApiInter.
 func (t *biliApi) SetCookies(cookies []*http.Cookie) {
-	t.cookies = cookies
+	for i := 0; i < len(cookies); i++ {
+		found := false
+		for k := 0; k < len(t.cookies); k++ {
+			if t.cookies[k].Name == cookies[i].Name {
+				t.cookies[k].Value = cookies[i].Value
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.cookies = append(t.cookies, cookies[i])
+		}
+	}
 }
 
 // GetInfoByRoom implements biliApiInter.
