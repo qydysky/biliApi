@@ -152,7 +152,26 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int) (err error, res struct {
 	res.Liveing = j.Data.LiveStatus == 1
 
 	//当前直播流
-	res.Streams = Streams(j.Data.PlayurlInfo.Playurl.Stream)
+	res.Streams = []struct {
+		ProtocolName string
+		Format       []struct {
+			FormatName string
+			Codec      []struct {
+				CodecName string
+				CurrentQn int
+				AcceptQn  []int
+				BaseURL   string
+				URLInfo   []struct {
+					Host      string
+					Extra     string
+					StreamTTL int
+				}
+				HdrQn     any
+				DolbyType int
+				AttrName  string
+			}
+		}
+	}(j.Data.PlayurlInfo.Playurl.Stream)
 	return
 }
 
