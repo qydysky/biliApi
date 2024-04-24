@@ -15,6 +15,7 @@ import (
 )
 
 const id = "github.com/qydysky/bili_danmu/F.biliApi"
+const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.3`
 
 func init() {
 	if e := cmp.Register[biliApiInter](id, &biliApi{}); e != nil {
@@ -26,6 +27,157 @@ type biliApi struct {
 	proxy   string
 	pool    *pool.Buf[reqf.Req]
 	cookies []*http.Cookie
+}
+
+// GetGuardNum implements biliApiInter.
+func (t *biliApi) GetGuardNum(upUid int, roomid int) (err error, GuardNum int) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	err = req.Reqf(reqf.Rval{
+		Url: fmt.Sprintf(`https://api.live.bilibili.com/xlive/app-room/v2/guardTab/topList?roomid=%d&page=1&ruid=%d&page_size=29`, roomid, upUid),
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			Info struct {
+				Num int `json:"num"`
+			} `json:"info"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	//获取舰长数
+	GuardNum = j.Data.Info.Num
+
+	return
+}
+
+// GetPopularAnchorRank implements biliApiInter.
+func (t *biliApi) GetPopularAnchorRank(uid int, upUid int, roomid int) (err error, note string) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	err = req.Reqf(reqf.Rval{
+		Url: fmt.Sprintf(`https://api.live.bilibili.com/xlive/general-interface/v1/rank/getPopularAnchorRank?uid=%d&ruid=%d&clientType=2`, uid, upUid),
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			Anchor struct {
+				Rank int `json:"rank"`
+			} `json:"anchor"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	//获取排名
+	note = "人气榜 "
+	if j.Data.Anchor.Rank == 0 {
+		note += "100+"
+	} else {
+		note += strconv.Itoa(j.Data.Anchor.Rank)
+	}
+
+	return
+}
+
+// getDanmuMedalAnchorInfo implements biliApiInter.
+func (t *biliApi) GetDanmuMedalAnchorInfo(Uid string, Roomid int) (err error, rface string) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	err = req.Reqf(reqf.Rval{
+		Url: "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuMedalAnchorInfo?ruid=" + Uid,
+		Header: map[string]string{
+			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
+			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Rface string `json:"rface"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	rface = j.Data.Rface + `@58w_58h`
+
+	return
 }
 
 // GetDanmuInfo implements biliApiInter.
