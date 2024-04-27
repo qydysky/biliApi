@@ -43,19 +43,16 @@ func (t *biliApi) Wbi(query string) (err error, queryEnc string) {
 	if err != nil {
 		return
 	}
-	if t.isLogin && query != "" {
+	if query != "" {
 		wrid, wts := getWridWts(query, t.imgURL, t.subURL)
 		queryEnc = query + "&w_rid=" + wrid + "&wts=" + wts
-		return
-	} else {
-		err = errors.New("login fail")
-		return
 	}
+	return
 }
 
 // GetNav implements biliApiInter.
 func (t *biliApi) GetNav() (err error) {
-	if _, ok := t.cache.Load(`imgURL`); ok && t.isLogin {
+	if _, ok := t.cache.Load(`imgURL`); ok {
 		return
 	}
 
@@ -100,18 +97,12 @@ func (t *biliApi) GetNav() (err error) {
 	err = json.Unmarshal(req.Respon, &j)
 	if err != nil {
 		return
-	} else if j.Code != 0 {
-		err = errors.New(j.Message)
-		return
-	} else if !j.Data.IsLogin {
-		err = errors.New("login fail")
-		return
+	} else {
+		t.isLogin = j.Data.IsLogin
+		t.imgURL = j.Data.WbiImg.ImgURL
+		t.subURL = j.Data.WbiImg.SubURL
+		t.cache.Store(`imgURL`, &struct{}{}, time.Hour)
 	}
-
-	t.isLogin = j.Data.IsLogin
-	t.imgURL = j.Data.WbiImg.ImgURL
-	t.subURL = j.Data.WbiImg.SubURL
-	t.cache.Store(`imgURL`, &struct{}{}, time.Hour)
 
 	return
 }
