@@ -1,17 +1,21 @@
 package biliApi
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	cmp "github.com/qydysky/part/component2"
-	part "github.com/qydysky/part/pool"
 	pool "github.com/qydysky/part/pool"
 	reqf "github.com/qydysky/part/reqf"
+	psync "github.com/qydysky/part/sync"
 )
 
 const id = "github.com/qydysky/bili_danmu/F.biliApi"
@@ -26,7 +30,90 @@ func init() {
 type biliApi struct {
 	proxy   string
 	pool    *pool.Buf[reqf.Req]
+	cache   psync.MapExceeded[string, struct{}]
+	isLogin bool
+	imgURL  string
+	subURL  string
 	cookies []*http.Cookie
+}
+
+// Wbi implements biliApiInter.
+func (t *biliApi) Wbi(query string) (err error, queryEnc string) {
+	err = t.GetNav()
+	if err != nil {
+		return
+	}
+	if t.isLogin && query != "" {
+		wrid, wts := getWridWts(query, t.imgURL, t.subURL)
+		queryEnc = query + "&w_rid=" + wrid + "&wts=" + wts
+		return
+	} else {
+		err = errors.New("login fail")
+		return
+	}
+}
+
+// GetNav implements biliApiInter.
+func (t *biliApi) GetNav() (err error) {
+	if _, ok := t.cache.Load(`imgURL`); ok && t.isLogin {
+		return
+	}
+
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: `https://api.bilibili.com/x/web-interface/nav`,
+		Header: map[string]string{
+			`Host`:            `api.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://t.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			IsLogin bool `json:"isLogin"`
+			WbiImg  struct {
+				ImgURL string `json:"img_url"`
+				SubURL string `json:"sub_url"`
+			} `json:"wbi_img"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	} else if !j.Data.IsLogin {
+		err = errors.New("login fail")
+		return
+	}
+
+	t.isLogin = j.Data.IsLogin
+	t.imgURL = j.Data.WbiImg.ImgURL
+	t.subURL = j.Data.WbiImg.SubURL
+	t.cache.Store(`imgURL`, &struct{}{}, time.Hour)
+
+	return
 }
 
 // GetGuardNum implements biliApiInter.
@@ -867,7 +954,7 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 	return
 }
 
-func (t *biliApi) SetReqPool(pool *part.Buf[reqf.Req]) {
+func (t *biliApi) SetReqPool(pool *pool.Buf[reqf.Req]) {
 	t.pool = pool
 }
 
@@ -1054,5 +1141,46 @@ func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 	} else {
 		QrcodeKey = res.Data.QrcodeKey
 	}
+	return
+}
+
+// bilibili wrid wts 计算
+func getWridWts(query string, imgURL, subURL string, customWts ...string) (w_rid, wts string) {
+	wbi := imgURL[strings.LastIndex(imgURL, "/")+1:strings.LastIndex(imgURL, ".")] +
+		subURL[strings.LastIndex(subURL, "/")+1:strings.LastIndex(subURL, ".")]
+
+	code := []int{46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5,
+		49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55,
+		40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25, 54, 21, 56, 59, 6, 63, 57,
+		62, 11, 36, 20, 34, 44, 52}
+
+	s := []byte{}
+
+	for i := 0; i < len(code); i++ {
+		if code[i] < len(wbi) {
+			s = append(s, wbi[code[i]])
+			if len(s) >= 32 {
+				break
+			}
+		}
+	}
+
+	object := strings.Split(query, "&")
+
+	if len(customWts) == 0 {
+		wts = fmt.Sprintf("%d", time.Now().Unix())
+	} else {
+		wts = customWts[0]
+	}
+	object = append(object, "wts="+wts)
+
+	slices.Sort(object)
+
+	for i := 0; i < len(object); i++ {
+		object[i] = url.PathEscape(object[i])
+	}
+
+	w_rid = fmt.Sprintf("%x", md5.Sum([]byte(strings.Join(object, "&")+string(s))))
+
 	return
 }
