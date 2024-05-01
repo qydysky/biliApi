@@ -15,7 +15,6 @@ import (
 	cmp "github.com/qydysky/part/component2"
 	pool "github.com/qydysky/part/pool"
 	reqf "github.com/qydysky/part/reqf"
-	psync "github.com/qydysky/part/sync"
 )
 
 const id = "github.com/qydysky/bili_danmu/F.biliApi"
@@ -31,7 +30,6 @@ type biliApi struct {
 	proxy   string
 	pool    *pool.Buf[reqf.Req]
 	cookies []*http.Cookie
-	cache   psync.MapExceeded[string, biliApi]
 }
 
 // GetFansMedal implements biliApiInter.
@@ -185,9 +183,6 @@ func (t *biliApi) Wbi(query string, WbiImg struct {
 	ImgURL string
 	SubURL string
 }) (err error, queryEnc string) {
-	if err != nil {
-		return
-	}
 	if query != "" {
 		wrid, wts := getWridWts(query, WbiImg.ImgURL, WbiImg.SubURL)
 		queryEnc = query + "&w_rid=" + wrid + "&wts=" + wts
@@ -203,10 +198,6 @@ func (t *biliApi) GetNav() (err error, res struct {
 		SubURL string
 	}
 }) {
-	if _, ok := t.cache.Load(`imgURL`); ok {
-		return
-	}
-
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
