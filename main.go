@@ -30,28 +30,179 @@ func init() {
 type biliApi struct {
 	proxy   string
 	pool    *pool.Buf[reqf.Req]
-	cache   psync.MapExceeded[string, struct{}]
-	isLogin bool
-	imgURL  string
-	subURL  string
 	cookies []*http.Cookie
+	cache   psync.MapExceeded[string, biliApi]
+}
+
+// GetFansMedal implements biliApiInter.
+func (t *biliApi) GetFansMedal() (err error, res []struct {
+	TargetID  int
+	IsLighted int
+	MedalID   int
+	RoomID    int
+}) {
+	//获取牌子列表
+	r := t.pool.Get()
+	defer t.pool.Put(r)
+
+	for pageNum := 1; true; pageNum += 1 {
+		err = r.Reqf(reqf.Rval{
+			Url: `https://api.live.bilibili.com/xlive/app-ucenter/v1/fansMedal/panel?page=` + strconv.Itoa(pageNum) + `&page_size=10`,
+			Header: map[string]string{
+				`Cookie`: reqf.Cookies_List_2_String(t.cookies),
+			},
+			Proxy:   t.proxy,
+			Timeout: 10 * 1000,
+			Retry:   2,
+		})
+		if err != nil {
+			return
+		}
+
+		var j struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			TTL     int    `json:"ttl"`
+			Data    struct {
+				List []struct {
+					Medal struct {
+						TargetID  int `json:"target_id"`
+						MedalID   int `json:"medal_id"`
+						IsLighted int `json:"is_lighted"`
+					} `json:"medal"`
+					AnchorInfo struct {
+						NickName string `json:"nick_name"`
+					} `json:"anchor_info"`
+					RoomInfo struct {
+						RoomID int `json:"room_id"`
+					} `json:"room_info"`
+				} `json:"list"`
+				PageInfo struct {
+					CurrentPage int `json:"current_page"`
+					TotalPage   int `json:"total_page"`
+				} `json:"page_info"`
+			} `json:"data"`
+		}
+
+		err = json.Unmarshal(r.Respon, &j)
+		if err != nil {
+			return
+		} else if j.Code != 0 {
+			err = errors.New(j.Message)
+			return
+		}
+
+		for i := 0; i < len(j.Data.List); i++ {
+			li := j.Data.List[i]
+			fmt.Println(li.AnchorInfo.NickName)
+			res = append(res, struct {
+				TargetID  int
+				IsLighted int
+				MedalID   int
+				RoomID    int
+			}{
+				TargetID:  li.Medal.TargetID,
+				IsLighted: li.Medal.IsLighted,
+				MedalID:   li.Medal.MedalID,
+				RoomID:    li.RoomInfo.RoomID,
+			})
+		}
+
+		if j.Data.PageInfo.CurrentPage == j.Data.PageInfo.TotalPage {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	return
+}
+
+// GetWearedMedal implements biliApiInter.
+func (t *biliApi) GetWearedMedal() (err error, res struct {
+	TodayIntimacy int
+	RoomID        int
+	TargetID      int
+}) {
+	r := t.pool.Get()
+	defer t.pool.Put(r)
+	err = r.Reqf(reqf.Rval{
+		Url: `https://api.live.bilibili.com/live_user/v1/UserInfo/get_weared_medal`,
+		Header: map[string]string{
+			`Cookie`: reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Msg     string `json:"msg"`
+		Message string `json:"message"`
+		Data    any    `json:"data"`
+	}
+	var jd struct {
+		TodayIntimacy int `json:"today_intimacy"`
+		TargetID      int `json:"target_id"`
+		Roominfo      struct {
+			RoomID int `json:"room_id"`
+		} `json:"roominfo"`
+	}
+
+	err = json.Unmarshal(r.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	switch j.Data.(type) {
+	case any:
+		return
+	default:
+		if data, e := json.Marshal(j.Data); e != nil {
+			err = e
+			return
+		} else if e = json.Unmarshal(data, &jd); e != nil {
+			err = e
+			return
+		} else {
+			res.TodayIntimacy = jd.TodayIntimacy
+			res.TargetID = jd.TargetID
+			res.RoomID = jd.Roominfo.RoomID
+			return
+		}
+	}
 }
 
 // Wbi implements biliApiInter.
-func (t *biliApi) Wbi(query string) (err error, queryEnc string) {
-	err = t.GetNav()
+func (t *biliApi) Wbi(query string, WbiImg struct {
+	ImgURL string
+	SubURL string
+}) (err error, queryEnc string) {
 	if err != nil {
 		return
 	}
 	if query != "" {
-		wrid, wts := getWridWts(query, t.imgURL, t.subURL)
+		wrid, wts := getWridWts(query, WbiImg.ImgURL, WbiImg.SubURL)
 		queryEnc = query + "&w_rid=" + wrid + "&wts=" + wts
 	}
 	return
 }
 
 // GetNav implements biliApiInter.
-func (t *biliApi) GetNav() (err error) {
+func (t *biliApi) GetNav() (err error, res struct {
+	IsLogin bool
+	WbiImg  struct {
+		ImgURL string
+		SubURL string
+	}
+}) {
 	if _, ok := t.cache.Load(`imgURL`); ok {
 		return
 	}
@@ -98,10 +249,9 @@ func (t *biliApi) GetNav() (err error) {
 	if err != nil {
 		return
 	} else {
-		t.isLogin = j.Data.IsLogin
-		t.imgURL = j.Data.WbiImg.ImgURL
-		t.subURL = j.Data.WbiImg.SubURL
-		t.cache.Store(`imgURL`, &struct{}{}, time.Hour)
+		res.IsLogin = j.Data.IsLogin
+		res.WbiImg.ImgURL = j.Data.WbiImg.ImgURL
+		res.WbiImg.SubURL = j.Data.WbiImg.SubURL
 	}
 
 	return
