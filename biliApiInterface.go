@@ -14,6 +14,7 @@ type biliApiInter interface {
 	SetReqPool(pool *pool.Buf[reqf.Req])
 	SetProxy(proxy string)
 	SetCookies(cookies []*http.Cookie)
+	GetCookie(name string) (error, string)
 
 	LoginQrCode() (err error, imgUrl string, QrcodeKey string)
 	LoginQrPoll(QrcodeKey string) (err error, cookies []*http.Cookie)
@@ -89,10 +90,11 @@ type biliApiInter interface {
 		RoomID        int
 		TargetID      int
 	})
-	GetFansMedal() (err error, res []struct {
+	GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 		TargetID  int
 		IsLighted int
 		MedalID   int
 		RoomID    int
 	})
+	SetFansMedal(medalId int) (err error)
 }

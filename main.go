@@ -32,8 +32,67 @@ type biliApi struct {
 	cookies []*http.Cookie
 }
 
+// GetCookies implements biliApiInter.
+func (t *biliApi) GetCookie(name string) (error, string) {
+	for i := 0; i < len(t.cookies); i++ {
+		if t.cookies[i].Name == name {
+			return nil, t.cookies[i].Value
+		}
+	}
+	return errors.New("not found"), ""
+}
+
+// SetFansMedal implements biliApiInter.
+func (t *biliApi) SetFansMedal(medalId int) (err error) {
+	post_url := `https://api.live.bilibili.com/xlive/web-room/v1/fansMedal/take_off` //无牌，不佩戴牌子
+	post_str := ""
+
+	if medalId != 0 {
+		e, csrf := t.GetCookie(`bili_jct`)
+		if e != nil {
+			return e
+		}
+		post_url = `https://api.live.bilibili.com/xlive/web-room/v1/fansMedal/wear`
+		post_str = fmt.Sprintf("medal_id=%d&csrf_token=%s&csrf=%s", medalId, csrf, csrf)
+	}
+
+	r := t.pool.Get()
+	defer t.pool.Put(r)
+	err = r.Reqf(reqf.Rval{
+		Url:     post_url,
+		PostStr: post_str,
+		Header: map[string]string{
+			`Cookie`:       reqf.Cookies_List_2_String(t.cookies),
+			`Content-Type`: `application/x-www-form-urlencoded; charset=UTF-8`,
+			`Referer`:      `https://passport.bilibili.com/login`,
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+	}
+
+	err = json.Unmarshal(r.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	return
+}
+
 // GetFansMedal implements biliApiInter.
-func (t *biliApi) GetFansMedal() (err error, res []struct {
+func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 	TargetID  int
 	IsLighted int
 	MedalID   int
@@ -44,8 +103,16 @@ func (t *biliApi) GetFansMedal() (err error, res []struct {
 	defer t.pool.Put(r)
 
 	for pageNum := 1; true; pageNum += 1 {
+		url := fmt.Sprintf("https://api.live.bilibili.com/xlive/app-ucenter/v1/fansMedal/panel?page=%d&page_size=10", pageNum)
+		if RoomID != 0 {
+			url += fmt.Sprintf("&room_id=%d", RoomID)
+		}
+		if TargetID != 0 {
+			url += fmt.Sprintf("&target_id=%d", TargetID)
+		}
+
 		err = r.Reqf(reqf.Rval{
-			Url: `https://api.live.bilibili.com/xlive/app-ucenter/v1/fansMedal/panel?page=` + strconv.Itoa(pageNum) + `&page_size=10`,
+			Url: url,
 			Header: map[string]string{
 				`Cookie`: reqf.Cookies_List_2_String(t.cookies),
 			},
@@ -75,6 +142,19 @@ func (t *biliApi) GetFansMedal() (err error, res []struct {
 						RoomID int `json:"room_id"`
 					} `json:"room_info"`
 				} `json:"list"`
+				SpecialList []struct {
+					Medal struct {
+						TargetID  int `json:"target_id"`
+						MedalID   int `json:"medal_id"`
+						IsLighted int `json:"is_lighted"`
+					} `json:"medal"`
+					AnchorInfo struct {
+						NickName string `json:"nick_name"`
+					} `json:"anchor_info"`
+					RoomInfo struct {
+						RoomID int `json:"room_id"`
+					} `json:"room_info"`
+				} `json:"special_list"`
 				PageInfo struct {
 					CurrentPage int `json:"current_page"`
 					TotalPage   int `json:"total_page"`
@@ -90,9 +170,8 @@ func (t *biliApi) GetFansMedal() (err error, res []struct {
 			return
 		}
 
-		for i := 0; i < len(j.Data.List); i++ {
-			li := j.Data.List[i]
-			fmt.Println(li.AnchorInfo.NickName)
+		for i := 0; i < len(j.Data.SpecialList); i++ {
+			li := j.Data.SpecialList[i]
 			res = append(res, struct {
 				TargetID  int
 				IsLighted int
@@ -104,6 +183,33 @@ func (t *biliApi) GetFansMedal() (err error, res []struct {
 				MedalID:   li.Medal.MedalID,
 				RoomID:    li.RoomInfo.RoomID,
 			})
+			if RoomID != 0 && li.RoomInfo.RoomID == RoomID {
+				return
+			}
+			if TargetID != 0 && li.Medal.TargetID == TargetID {
+				return
+			}
+		}
+
+		for i := 0; i < len(j.Data.List); i++ {
+			li := j.Data.List[i]
+			res = append(res, struct {
+				TargetID  int
+				IsLighted int
+				MedalID   int
+				RoomID    int
+			}{
+				TargetID:  li.Medal.TargetID,
+				IsLighted: li.Medal.IsLighted,
+				MedalID:   li.Medal.MedalID,
+				RoomID:    li.RoomInfo.RoomID,
+			})
+			if RoomID != 0 && li.RoomInfo.RoomID == RoomID {
+				return
+			}
+			if TargetID != 0 && li.Medal.TargetID == TargetID {
+				return
+			}
 		}
 
 		if j.Data.PageInfo.CurrentPage == j.Data.PageInfo.TotalPage {
