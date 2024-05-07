@@ -32,6 +32,55 @@ type biliApi struct {
 	cookies []*http.Cookie
 }
 
+// GetLiveBuvid implements biliApiInter.
+func (t *biliApi) GetLiveBuvid(Roomid int) (err error, cookies []*http.Cookie) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: fmt.Sprintf("https://api.live.bilibili.com/live/getRoomKanBanModel?roomid=%d", Roomid),
+		Header: map[string]string{
+			`Host`:                      `live.bilibili.com`,
+			`User-Agent`:                UA,
+			`Accept`:                    `text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8`,
+			`Accept-Language`:           `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`:           `gzip, deflate, br`,
+			`Connection`:                `keep-alive`,
+			`Cache-Control`:             `no-cache`,
+			`Referer`:                   "https://live.bilibili.com",
+			`DNT`:                       `1`,
+			`Upgrade-Insecure-Requests`: `1`,
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	cookies = req.Response.Cookies()
+	return
+}
+
+// GetOtherCookies implements biliApiInter.
+func (t *biliApi) GetOtherCookies() (err error, cookies []*http.Cookie) {
+	r := t.pool.Get()
+	defer t.pool.Put(r)
+	err = r.Reqf(reqf.Rval{
+		Url: `https://www.bilibili.com/`,
+		Header: map[string]string{
+			`Cookie`: reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	cookies = r.Response.Cookies()
+	return
+}
+
 // DoSign implements biliApiInter.
 func (t *biliApi) DoSign() (err error, HadSignDays int) {
 	req := t.pool.Get()

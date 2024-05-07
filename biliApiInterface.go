@@ -18,6 +18,8 @@ type biliApiInter interface {
 
 	LoginQrCode() (err error, imgUrl string, QrcodeKey string)
 	LoginQrPoll(QrcodeKey string) (err error, cookies []*http.Cookie)
+	GetOtherCookies() (err error, cookies []*http.Cookie)
+	GetLiveBuvid(Roomid int) (err error, cookies []*http.Cookie)
 	GetRoomBaseInfo(Roomid int) (err error, res struct {
 		UpUid         int
 		Uname         string
