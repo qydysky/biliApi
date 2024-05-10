@@ -33,7 +33,7 @@ func TestMain(t *testing.T) {
 
 	if err, _, QrcodeKey := api.LoginQrCode(); err != nil {
 		t.Fatal(err)
-	} else if err, _ := api.LoginQrPoll(QrcodeKey); err != nil {
+	} else if err := api.LoginQrPoll(QrcodeKey); err != nil {
 		t.Fatal(err)
 	}
 

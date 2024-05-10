@@ -32,8 +32,232 @@ type biliApi struct {
 	cookies []*http.Cookie
 }
 
+// GetCookies implements biliApiInter.
+func (t *biliApi) GetCookies() (cookies []*http.Cookie) {
+	return t.cookies
+}
+
+// Silver2coin implements biliApiInter.
+func (t *biliApi) Silver2coin() (err error, Message string) {
+	e, csrf := t.GetCookie(`bili_jct`)
+	if e != nil {
+		return err, ""
+	}
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url:     `https://api.live.bilibili.com/xlive/revenue/v1/wallet/silver2coin`,
+		PostStr: url.PathEscape(fmt.Sprintf("csrf_token=%s&csrf=%s", csrf, csrf)),
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://link.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Content-Type`:    `application/x-www-form-urlencoded`,
+			`Referer`:         `https://link.bilibili.com/p/center/index`,
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+	Message = j.Message
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
+// GetWalletRule implements biliApiInter.
+func (t *biliApi) GetWalletRule() (err error, Silver2CoinPrice int) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: `https://api.live.bilibili.com/xlive/revenue/v1/wallet/getRule`,
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://link.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         `https://link.bilibili.com/p/center/index`,
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			Silver2CoinPrice int `json:"silver_2_coin_price"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	Silver2CoinPrice = j.Data.Silver2CoinPrice
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
+// GetWalletStatus implements biliApiInter.
+func (t *biliApi) GetWalletStatus() (err error, res struct {
+	Silver          int
+	Silver2CoinLeft int
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: `https://api.live.bilibili.com/xlive/revenue/v1/wallet/getStatus`,
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://link.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         `https://link.bilibili.com/p/center/index`,
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			Silver          int `json:"silver"`
+			Silver2CoinLeft int `json:"silver_2_coin_left"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	res = struct {
+		Silver          int
+		Silver2CoinLeft int
+	}(j.Data)
+
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
+// GetBagList implements biliApiInter.
+func (t *biliApi) GetBagList(Roomid int) (err error, res []struct {
+	Bag_id    int
+	Gift_id   int
+	Gift_name string
+	Gift_num  int
+	Expire_at int
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	err = req.Reqf(reqf.Rval{
+		Url: `https://api.live.bilibili.com/xlive/web-room/v1/gift/bag_list?t=` + strconv.Itoa(int(time.Now().UnixNano()/int64(time.Millisecond))) + `&room_id=` + strconv.Itoa(Roomid),
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         "https://live.bilibili.com/" + strconv.Itoa(Roomid),
+			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			List []struct {
+				Bag_id    int    `json:"bag_id"`
+				Gift_id   int    `json:"gift_id"`
+				Gift_name string `json:"gift_name"`
+				Gift_num  int    `json:"gift_num"`
+				Expire_at int    `json:"expire_at"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+	res = []struct {
+		Bag_id    int
+		Gift_id   int
+		Gift_name string
+		Gift_num  int
+		Expire_at int
+	}(j.Data.List)
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
 // GetLiveBuvid implements biliApiInter.
-func (t *biliApi) GetLiveBuvid(Roomid int) (err error, cookies []*http.Cookie) {
+func (t *biliApi) GetLiveBuvid(Roomid int) (err error) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -57,15 +281,15 @@ func (t *biliApi) GetLiveBuvid(Roomid int) (err error, cookies []*http.Cookie) {
 	if err != nil {
 		return
 	}
-	cookies = req.Response.Cookies()
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
 // GetOtherCookies implements biliApiInter.
-func (t *biliApi) GetOtherCookies() (err error, cookies []*http.Cookie) {
-	r := t.pool.Get()
-	defer t.pool.Put(r)
-	err = r.Reqf(reqf.Rval{
+func (t *biliApi) GetOtherCookies() (err error) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
 		Url: `https://www.bilibili.com/`,
 		Header: map[string]string{
 			`Cookie`: reqf.Cookies_List_2_String(t.cookies),
@@ -77,7 +301,7 @@ func (t *biliApi) GetOtherCookies() (err error, cookies []*http.Cookie) {
 	if err != nil {
 		return
 	}
-	cookies = r.Response.Cookies()
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -124,6 +348,7 @@ func (t *biliApi) DoSign() (err error, HadSignDays int) {
 	}
 
 	HadSignDays = j.Data.HadSignDays
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -172,6 +397,7 @@ func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
 		return
 	}
 	Status = j.Data.Status
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -199,9 +425,9 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 		post_str = fmt.Sprintf("medal_id=%d&csrf_token=%s&csrf=%s", medalId, csrf, csrf)
 	}
 
-	r := t.pool.Get()
-	defer t.pool.Put(r)
-	err = r.Reqf(reqf.Rval{
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
 		Url:     post_url,
 		PostStr: post_str,
 		Header: map[string]string{
@@ -223,7 +449,7 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 		TTL     int    `json:"ttl"`
 	}
 
-	err = json.Unmarshal(r.Respon, &j)
+	err = json.Unmarshal(req.Respon, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -231,6 +457,7 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 		return
 	}
 
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -313,6 +540,7 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 			return
 		}
 
+		t.SetCookies(r.Response.Cookies())
 		for i := 0; i < len(j.Data.SpecialList); i++ {
 			li := j.Data.SpecialList[i]
 			res = append(res, struct {
@@ -408,6 +636,7 @@ func (t *biliApi) GetWearedMedal() (err error, res struct {
 		return
 	}
 
+	t.SetCookies(r.Response.Cookies())
 	switch j.Data.(type) {
 	case any:
 		return
@@ -494,6 +723,7 @@ func (t *biliApi) GetNav() (err error, res struct {
 		res.WbiImg.SubURL = j.Data.WbiImg.SubURL
 	}
 
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -547,6 +777,7 @@ func (t *biliApi) GetGuardNum(upUid int, roomid int) (err error, GuardNum int) {
 	//获取舰长数
 	GuardNum = j.Data.Info.Num
 
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -605,6 +836,7 @@ func (t *biliApi) GetPopularAnchorRank(uid int, upUid int, roomid int) (err erro
 		note += strconv.Itoa(j.Data.Anchor.Rank)
 	}
 
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -645,6 +877,7 @@ func (t *biliApi) GetDanmuMedalAnchorInfo(Uid string, Roomid int) (err error, rf
 
 	rface = j.Data.Rface + `@58w_58h`
 
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -708,6 +941,7 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 		}
 	}
 	res.WSURL = tmp
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -855,6 +1089,7 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 			}
 		}
 	}(j.Data.PlayurlInfo.Playurl.Stream)
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -1332,6 +1567,7 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 		//直播间是否被封禁
 		res.Locked = j.Data.RoomInfo.LockStatus == 1
 	}
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -1430,11 +1666,12 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 			}
 		}
 	}
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
 // LoginQrPoll implements F.BiliApi.
-func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error, cookies []*http.Cookie) {
+func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error) {
 	r := t.pool.Get()
 	defer t.pool.Put(r)
 	if e := r.Reqf(reqf.Rval{
@@ -1468,9 +1705,8 @@ func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error, cookies []*http.Cook
 	if res.Code != 0 {
 		err = errors.New(`code != 0`)
 		return
-	} else if res.Data.Code == 0 {
-		cookies = r.Response.Cookies()
 	}
+	t.SetCookies(r.Response.Cookies())
 	return
 }
 
@@ -1522,6 +1758,7 @@ func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 	} else {
 		QrcodeKey = res.Data.QrcodeKey
 	}
+	t.SetCookies(r.Response.Cookies())
 	return
 }
 
