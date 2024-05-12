@@ -10,11 +10,13 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	cmp "github.com/qydysky/part/component2"
 	pool "github.com/qydysky/part/pool"
 	reqf "github.com/qydysky/part/reqf"
+	psync "github.com/qydysky/part/sync"
 )
 
 const id = "github.com/qydysky/bili_danmu/F.biliApi"
@@ -30,11 +32,401 @@ type biliApi struct {
 	proxy   string
 	pool    *pool.Buf[reqf.Req]
 	cookies []*http.Cookie
+	cache   psync.MapExceeded[string, *struct {
+		IsLogin bool
+		WbiImg  struct {
+			ImgURL string
+			SubURL string
+		}
+	}]
+	lock sync.RWMutex
+}
+
+// SearchUP implements biliApiInter.
+func (t *biliApi) SearchUP(s string) (err error, res []struct {
+	Roomid  int
+	Uname   string
+	Is_live bool
+}) {
+
+	query := "page=1&page_size=10&order=online&platform=pc&search_type=live_user&keyword=" + url.PathEscape(s)
+
+	if e, v := t.GetNav(); e != nil {
+		err = e
+		return
+	} else if e, queryE := t.Wbi(query, v.WbiImg); e != nil {
+		err = e
+		return
+	} else {
+		query = queryE
+	}
+
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url:   "https://api.bilibili.com/x/web-interface/wbi/search/type?" + query,
+		Proxy: t.proxy,
+		Header: map[string]string{
+			`Cookie`: t.GetCookiesS(),
+		},
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			Result []struct {
+				IsLive bool   `json:"is_live"`
+				Uname  string `json:"uname"`
+				Roomid int    `json:"roomid"`
+			} `json:"result"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	for i := 0; i < len(j.Data.Result); i += 1 {
+		uname := strings.ReplaceAll(j.Data.Result[i].Uname, `<em class="keyword">`, ``)
+		uname = strings.ReplaceAll(uname, `</em>`, ``)
+		res = append(res, struct {
+			Roomid  int
+			Uname   string
+			Is_live bool
+		}{
+			Roomid:  j.Data.Result[i].Roomid,
+			Uname:   uname,
+			Is_live: j.Data.Result[i].IsLive,
+		})
+	}
+
+	return
+}
+
+// GetHisDanmu implements biliApiInter.
+func (t *biliApi) GetHisDanmu(Roomid int) (err error, res []string) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: "https://api.live.bilibili.com/xlive/web-room/v1/dM/gethistory?roomid=" + strconv.Itoa(Roomid),
+		Header: map[string]string{
+			`Referer`: "https://live.bilibili.com/" + strconv.Itoa(Roomid),
+		},
+		Proxy:   t.proxy,
+		Timeout: 10 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code int `json:"code"`
+		Data struct {
+			Room []struct {
+				Text string `json:"text"`
+			} `json:"room"`
+		} `json:"data"`
+		Message string `json:"message"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	for _, v := range j.Data.Room {
+		if v.Text != "" {
+			res = append(res, v.Text)
+		}
+	}
+	return
+}
+
+// IsConnected implements biliApiInter.
+func (t *biliApi) IsConnected() (err error) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	return req.Reqf(reqf.Rval{
+		Url:              "https://www.bilibili.com",
+		Proxy:            t.proxy,
+		Timeout:          10 * 1000,
+		JustResponseCode: true,
+	})
+}
+
+// GetFollowing implements biliApiInter.
+func (t *biliApi) GetFollowing() (err error, res []struct {
+	Roomid     int
+	Uname      string
+	Title      string
+	LiveStatus int
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	for pageNum := 1; true; pageNum += 1 {
+		err = req.Reqf(reqf.Rval{
+			Url: `https://api.live.bilibili.com/xlive/web-ucenter/user/following?page=` + strconv.Itoa(pageNum) + `&page_size=10`,
+			Header: map[string]string{
+				`Host`:            `api.live.bilibili.com`,
+				`User-Agent`:      UA,
+				`Accept`:          `application/json, text/plain, */*`,
+				`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+				`Accept-Encoding`: `gzip, deflate, br`,
+				`Origin`:          `https://t.bilibili.com`,
+				`Connection`:      `keep-alive`,
+				`Pragma`:          `no-cache`,
+				`Cache-Control`:   `no-cache`,
+				`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
+				`Cookie`:          t.GetCookiesS(),
+			},
+			Proxy:   t.proxy,
+			Timeout: 3 * 1000,
+			Retry:   2,
+		})
+		if err != nil {
+			return
+		}
+		var j struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			TTL     int    `json:"ttl"`
+			Data    struct {
+				TotalPage int `json:"totalPage"`
+				List      []struct {
+					Roomid     int    `json:"roomid"`
+					Uname      string `json:"uname"`
+					Title      string `json:"title"`
+					LiveStatus int    `json:"live_status"`
+				} `json:"list"`
+			} `json:"data"`
+		}
+
+		err = json.Unmarshal(req.Respon, &j)
+		if err != nil {
+			return
+		} else if j.Code != 0 {
+			err = errors.New(j.Message)
+			return
+		}
+
+		for _, item := range j.Data.List {
+			if item.LiveStatus == 0 {
+				break
+			} else {
+				res = append(res, struct {
+					Roomid     int
+					Uname      string
+					Title      string
+					LiveStatus int
+				}(item))
+			}
+		}
+
+		if pageNum*10 > j.Data.TotalPage {
+			break
+		}
+
+		time.Sleep(time.Second)
+	}
+
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
+// getOnlineGoldRank implements biliApiInter.
+func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum int) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	err = req.Reqf(reqf.Rval{
+		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank?ruid=%d&roomId=%d&page=1&pageSize=10", upUid, roomid),
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Cookie`:          t.GetCookiesS(),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+	})
+	if err != nil {
+		return
+	}
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			OnlineNum int `json:"onlineNum"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	OnlineNum = j.Data.OnlineNum
+
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
+// RoomEntryAction implements biliApiInter.
+func (t *biliApi) RoomEntryAction(Roomid int) (err error) {
+	e, csrf := t.GetCookie(`bili_jct`)
+	if e != nil {
+		return e
+	}
+
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	err = req.Reqf(reqf.Rval{
+		Url:     `https://api.live.bilibili.com/xlive/web-room/v1/index/roomEntryAction`,
+		PostStr: fmt.Sprintf("room_id=%d&platform=pc&csrf_token=%s&csrf=%s&visit_id=", Roomid, csrf, csrf),
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
+			`Cookie`:          t.GetCookiesS(),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
+// GetHisStream implements biliApiInter.
+func (t *biliApi) GetHisStream() (err error, res []struct {
+	Uname      string
+	Title      string
+	Roomid     int
+	LiveStatus int
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url: `https://api.bilibili.com/x/web-interface/history/cursor?type=live&ps=10`,
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://t.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
+			`Cookie`:          t.GetCookiesS(),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		TTL     int    `json:"ttl"`
+		Data    struct {
+			List []struct {
+				Title      string `json:"title"`
+				AuthorName string `json:"author_name"`
+				Kid        int    `json:"kid"`
+				LiveStatus int    `json:"live_status"`
+			} `json:"list"`
+		} `json:"data"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	for _, item := range j.Data.List {
+		res = append(res, struct {
+			Uname      string
+			Title      string
+			Roomid     int
+			LiveStatus int
+		}{
+			Uname:      item.AuthorName,
+			Title:      item.Title,
+			Roomid:     item.Kid,
+			LiveStatus: item.LiveStatus,
+		})
+	}
+
+	t.SetCookies(req.Response.Cookies())
+	return
 }
 
 // GetCookies implements biliApiInter.
 func (t *biliApi) GetCookies() (cookies []*http.Cookie) {
-	return t.cookies
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+	return append(cookies, t.cookies...)
+}
+func (t *biliApi) GetCookiesS() (cookies string) {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+	return reqf.Cookies_List_2_String(t.cookies)
 }
 
 // Silver2coin implements biliApiInter.
@@ -60,7 +452,7 @@ func (t *biliApi) Silver2coin() (err error, Message string) {
 			`Cache-Control`:   `no-cache`,
 			`Content-Type`:    `application/x-www-form-urlencoded`,
 			`Referer`:         `https://link.bilibili.com/p/center/index`,
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -103,7 +495,7 @@ func (t *biliApi) GetWalletRule() (err error, Silver2CoinPrice int) {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         `https://link.bilibili.com/p/center/index`,
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -154,7 +546,7 @@ func (t *biliApi) GetWalletStatus() (err error, res struct {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         `https://link.bilibili.com/p/center/index`,
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -214,7 +606,7 @@ func (t *biliApi) GetBagList(Roomid int) (err error, res []struct {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         "https://live.bilibili.com/" + strconv.Itoa(Roomid),
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -292,7 +684,7 @@ func (t *biliApi) GetOtherCookies() (err error) {
 	err = req.Reqf(reqf.Rval{
 		Url: `https://www.bilibili.com/`,
 		Header: map[string]string{
-			`Cookie`: reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`: t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 10 * 1000,
@@ -322,7 +714,7 @@ func (t *biliApi) DoSign() (err error, HadSignDays int) {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         "https://live.bilibili.com/all",
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -370,7 +762,7 @@ func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         "https://live.bilibili.com/all",
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -403,12 +795,14 @@ func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
 
 // GetCookies implements biliApiInter.
 func (t *biliApi) GetCookie(name string) (error, string) {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
 	for i := 0; i < len(t.cookies); i++ {
 		if t.cookies[i].Name == name {
 			return nil, t.cookies[i].Value
 		}
 	}
-	return errors.New("not found"), ""
+	return errors.New("cookie not found: " + name), ""
 }
 
 // SetFansMedal implements biliApiInter.
@@ -431,7 +825,7 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 		Url:     post_url,
 		PostStr: post_str,
 		Header: map[string]string{
-			`Cookie`:       reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:       t.GetCookiesS(),
 			`Content-Type`: `application/x-www-form-urlencoded; charset=UTF-8`,
 			`Referer`:      `https://passport.bilibili.com/login`,
 		},
@@ -484,7 +878,7 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 		err = r.Reqf(reqf.Rval{
 			Url: url,
 			Header: map[string]string{
-				`Cookie`: reqf.Cookies_List_2_String(t.cookies),
+				`Cookie`: t.GetCookiesS(),
 			},
 			Proxy:   t.proxy,
 			Timeout: 10 * 1000,
@@ -604,7 +998,7 @@ func (t *biliApi) GetWearedMedal() (err error, res struct {
 	err = r.Reqf(reqf.Rval{
 		Url: `https://api.live.bilibili.com/live_user/v1/UserInfo/get_weared_medal`,
 		Header: map[string]string{
-			`Cookie`: reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`: t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 10 * 1000,
@@ -676,6 +1070,12 @@ func (t *biliApi) GetNav() (err error, res struct {
 		SubURL string
 	}
 }) {
+	vr, loaded, f := t.cache.LoadOrStore(`webImg`)
+	if loaded {
+		res = *vr
+		return
+	}
+
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -691,7 +1091,7 @@ func (t *biliApi) GetNav() (err error, res struct {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -723,6 +1123,8 @@ func (t *biliApi) GetNav() (err error, res struct {
 		res.WbiImg.SubURL = j.Data.WbiImg.SubURL
 	}
 
+	f(&res, time.Hour)
+
 	t.SetCookies(req.Response.Cookies())
 	return
 }
@@ -745,7 +1147,7 @@ func (t *biliApi) GetGuardNum(upUid int, roomid int) (err error, GuardNum int) {
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -799,7 +1201,7 @@ func (t *biliApi) GetPopularAnchorRank(uid int, upUid int, roomid int) (err erro
 			`Pragma`:          `no-cache`,
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
-			`Cookie`:          reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:          t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 3 * 1000,
@@ -849,7 +1251,7 @@ func (t *biliApi) GetDanmuMedalAnchorInfo(Uid string, Roomid int) (err error, rf
 		Url: "https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuMedalAnchorInfo?ruid=" + Uid,
 		Header: map[string]string{
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
-			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:  t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 10 * 1000,
@@ -892,7 +1294,7 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo?type=0&id=%d", Roomid),
 		Header: map[string]string{
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
-			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:  t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 10 * 1000,
@@ -978,7 +1380,7 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo?protocol=0,1&format=0,1,2&codec=0,1,2&qn=%d&platform=web&ptype=8&dolby=5&panorama=1&room_id=%d", Qn, Roomid),
 		Header: map[string]string{
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
-			`Cookie`:  reqf.Cookies_List_2_String(t.cookies),
+			`Cookie`:  t.GetCookiesS(),
 		},
 		Proxy:   t.proxy,
 		Timeout: 10 * 1000,
@@ -1095,6 +1497,8 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 
 // SetCookies implements biliApiInter.
 func (t *biliApi) SetCookies(cookies []*http.Cookie) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	for i := 0; i < len(cookies); i++ {
 		found := false
 		for k := 0; k < len(t.cookies); k++ {
