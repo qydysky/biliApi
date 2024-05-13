@@ -1,6 +1,7 @@
 package biliApi
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/json"
 	"errors"
@@ -40,6 +41,227 @@ type biliApi struct {
 		}
 	}]
 	lock sync.RWMutex
+}
+
+// LiveHtml implements biliApiInter.
+func (t *biliApi) LiveHtml(Roomid int) (err error, res struct {
+	RoomInitRes struct {
+		Code    int
+		Message string
+		TTL     int
+		Data    struct {
+			RoomID      int
+			UID         int
+			LiveStatus  int
+			LiveTime    int
+			PlayurlInfo struct {
+				ConfJSON string
+				Playurl  struct {
+					Stream []struct {
+						ProtocolName string
+						Format       []struct {
+							FormatName string
+							Codec      []struct {
+								CodecName string
+								CurrentQn int
+								AcceptQn  []int
+								BaseURL   string
+								URLInfo   []struct {
+									Host      string
+									Extra     string
+									StreamTTL int
+								}
+								HdrQn     any
+								DolbyType int
+								AttrName  string
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	RoomInfoRes struct {
+		Code    int
+		Message string
+		TTL     int
+		Data    struct {
+			RoomInfo struct {
+				Title        string
+				LockStatus   int
+				AreaID       int
+				ParentAreaID int
+			}
+			AnchorInfo      struct{ BaseInfo struct{ Uname string } }
+			PopularRankInfo struct {
+				Rank     int
+				RankName string
+			}
+			GuardInfo struct{ Count int }
+		}
+	}
+}) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Header: map[string]string{
+			`Host`:            `live.bilibili.com`,
+			`User-Agent`:      `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.3`,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
+		},
+		Url:   fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
+		Proxy: t.proxy,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		RoomInitRes struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			TTL     int    `json:"ttl"`
+			Data    struct {
+				RoomID      int `json:"room_id"`
+				UID         int `json:"uid"`
+				LiveStatus  int `json:"live_status"`
+				LiveTime    int `json:"live_time"`
+				PlayurlInfo struct {
+					ConfJSON string `json:"conf_json"`
+					Playurl  struct {
+						Stream []struct {
+							ProtocolName string `json:"protocol_name"`
+							Format       []struct {
+								FormatName string `json:"format_name"`
+								Codec      []struct {
+									CodecName string `json:"codec_name"`
+									CurrentQn int    `json:"current_qn"`
+									AcceptQn  []int  `json:"accept_qn"`
+									BaseURL   string `json:"base_url"`
+									URLInfo   []struct {
+										Host      string `json:"host"`
+										Extra     string `json:"extra"`
+										StreamTTL int    `json:"stream_ttl"`
+									} `json:"url_info"`
+									HdrQn     interface{} `json:"hdr_qn"`
+									DolbyType int         `json:"dolby_type"`
+									AttrName  string      `json:"attr_name"`
+								} `json:"codec"`
+							} `json:"format"`
+						} `json:"stream"`
+					} `json:"playurl"`
+				} `json:"playurl_info"`
+			} `json:"data"`
+		} `json:"roomInitRes"`
+		RoomInfoRes struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+			TTL     int    `json:"ttl"`
+			Data    struct {
+				RoomInfo struct {
+					Title        string `json:"title"`
+					LockStatus   int    `json:"lock_status"`
+					AreaID       int    `json:"area_id"`
+					ParentAreaID int    `json:"parent_area_id"`
+				} `json:"room_info"`
+				AnchorInfo struct {
+					BaseInfo struct {
+						Uname string `json:"uname"`
+					} `json:"base_info"`
+				} `json:"anchor_info"`
+				PopularRankInfo struct {
+					Rank     int    `json:"rank"`
+					RankName string `json:"rank_name"`
+				} `json:"popular_rank_info"`
+				GuardInfo struct {
+					Count int `json:"count"`
+				} `json:"guard_info"`
+			} `json:"data"`
+		} `json:"roomInfoRes"`
+	}
+
+	if bs := bytes.Split(req.Respon, []byte("<script>window.__NEPTUNE_IS_MY_WAIFU__=")); len(bs) < 2 {
+		err = errors.New("不存在__NEPTUNE_IS_MY_WAIFU__")
+		return
+	} else if bs = bytes.Split(bs[1], []byte("</script>")); len(bs) < 1 {
+		err = errors.New("不存在__NEPTUNE_IS_MY_WAIFU__")
+		return
+	} else {
+		err = json.Unmarshal(bs[0], &j)
+		if err != nil {
+			return
+		} else if j.RoomInitRes.Code != 0 {
+			err = errors.New(j.RoomInitRes.Message)
+			return
+		}
+
+		res = struct {
+			RoomInitRes struct {
+				Code    int
+				Message string
+				TTL     int
+				Data    struct {
+					RoomID      int
+					UID         int
+					LiveStatus  int
+					LiveTime    int
+					PlayurlInfo struct {
+						ConfJSON string
+						Playurl  struct {
+							Stream []struct {
+								ProtocolName string
+								Format       []struct {
+									FormatName string
+									Codec      []struct {
+										CodecName string
+										CurrentQn int
+										AcceptQn  []int
+										BaseURL   string
+										URLInfo   []struct {
+											Host      string
+											Extra     string
+											StreamTTL int
+										}
+										HdrQn     any
+										DolbyType int
+										AttrName  string
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+			RoomInfoRes struct {
+				Code    int
+				Message string
+				TTL     int
+				Data    struct {
+					RoomInfo struct {
+						Title        string
+						LockStatus   int
+						AreaID       int
+						ParentAreaID int
+					}
+					AnchorInfo      struct{ BaseInfo struct{ Uname string } }
+					PopularRankInfo struct {
+						Rank     int
+						RankName string
+					}
+					GuardInfo struct{ Count int }
+				}
+			}
+		}(j)
+
+		return
+	}
 }
 
 // SearchUP implements biliApiInter.
