@@ -260,6 +260,7 @@ func (t *biliApi) LiveHtml(Roomid int) (err error, res struct {
 			}
 		}(j)
 
+		t.SetCookies(req.Response.Cookies())
 		return
 	}
 }
@@ -333,6 +334,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		})
 	}
 
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -376,6 +378,8 @@ func (t *biliApi) GetHisDanmu(Roomid int) (err error, res []string) {
 			res = append(res, v.Text)
 		}
 	}
+
+	t.SetCookies(req.Response.Cookies())
 	return
 }
 
@@ -520,9 +524,9 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 
 // RoomEntryAction implements biliApiInter.
 func (t *biliApi) RoomEntryAction(Roomid int) (err error) {
-	e, csrf := t.GetCookie(`bili_jct`)
-	if e != nil {
-		return e
+	csrf := ""
+	if e, t := t.GetCookie(`bili_jct`); e == nil {
+		csrf = t
 	}
 
 	req := t.pool.Get()
@@ -645,6 +649,7 @@ func (t *biliApi) GetCookies() (cookies []*http.Cookie) {
 	defer t.lock.RUnlock()
 	return append(cookies, t.cookies...)
 }
+
 func (t *biliApi) GetCookiesS() (cookies string) {
 	t.lock.RLock()
 	defer t.lock.RUnlock()
@@ -1210,15 +1215,21 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 }
 
 // GetWearedMedal implements biliApiInter.
-func (t *biliApi) GetWearedMedal() (err error, res struct {
+func (t *biliApi) GetWearedMedal(uid, upUid int) (err error, res struct {
 	TodayIntimacy int
 	RoomID        int
 	TargetID      int
 }) {
+	csrf := ""
+	if e, t := t.GetCookie(`bili_jct`); e == nil {
+		csrf = t
+	}
+
 	r := t.pool.Get()
 	defer t.pool.Put(r)
 	err = r.Reqf(reqf.Rval{
-		Url: `https://api.live.bilibili.com/live_user/v1/UserInfo/get_weared_medal`,
+		Url:     `https://api.live.bilibili.com/live_user/v1/UserInfo/get_weared_medal`,
+		PostStr: fmt.Sprintf("source=1&uid=%d&target_id=%d&csrf_token=%s&csrf=%s&visit_id=", uid, upUid, csrf, csrf),
 		Header: map[string]string{
 			`Cookie`: t.GetCookiesS(),
 		},
@@ -1737,6 +1748,7 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 }
 
 // GetInfoByRoom implements biliApiInter.
+// test
 func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 	UpUid         int
 	Uname         string
@@ -2202,6 +2214,7 @@ func (t *biliApi) SetReqPool(pool *pool.Buf[reqf.Req]) {
 }
 
 // GetRoomBaseInfo implements biliApiInter.
+// test
 func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 	UpUid         int
 	Uname         string
@@ -2297,6 +2310,7 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 }
 
 // LoginQrPoll implements F.BiliApi.
+// test
 func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error) {
 	r := t.pool.Get()
 	defer t.pool.Put(r)
@@ -2340,6 +2354,7 @@ func (t *biliApi) SetProxy(proxy string) {
 	t.proxy = proxy
 }
 
+// test
 func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 	r := t.pool.Get()
 	defer t.pool.Put(r)

@@ -44,4 +44,86 @@ func TestMain(t *testing.T) {
 	if err, _ := api.GetInfoByRoom(213); err != nil {
 		t.Fatal(err)
 	}
+
+	if err, _ := api.LiveHtml(213); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := api.GetOtherCookies(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetNav(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.SearchUP("C酱"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := api.IsConnected(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetHisDanmu(213); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetFollowing(); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetOnlineGoldRank(13046, 92613); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := api.RoomEntryAction(92613); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetHisStream(); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.Silver2coin(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetWalletRule(); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetWalletStatus(); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.GetBagList(213); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+
+	if err := api.GetLiveBuvid(213); err != nil {
+		t.Fatal(err)
+	}
+
+	if err, _ := api.DoSign(); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+	if err, _ := api.GetWebGetSignInfo(); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+	if err := api.SetFansMedal(0); err.Error() != `405 Method Not Allowed` {
+		t.Fatal(err)
+	}
+	if err, _ := api.GetFansMedal(213, 0); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+	if err, _ := api.GetWearedMedal(29183321, 92613); err.Error() != "账号未登录" {
+		t.Fatal(err)
+	}
+	if err, _ := api.GetGuardNum(13046, 92613); err != nil {
+		t.Fatal(err)
+	}
+	if err, _ := api.GetPopularAnchorRank(0, 13046, 92613); err != nil {
+		t.Fatal(err)
+	}
 }
