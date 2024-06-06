@@ -1105,7 +1105,8 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 		err = r.Reqf(reqf.Rval{
 			Url: url,
 			Header: map[string]string{
-				`Cookie`: t.GetCookiesS(),
+				`Cookie`:  t.GetCookiesS(),
+				`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", RoomID),
 			},
 			Proxy:   t.proxy,
 			Timeout: 10 * 1000,
