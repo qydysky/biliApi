@@ -2312,7 +2312,7 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 
 // LoginQrPoll implements F.BiliApi.
 // test
-func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error) {
+func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error, code int) {
 	r := t.pool.Get()
 	defer t.pool.Put(r)
 	if e := r.Reqf(reqf.Rval{
@@ -2347,6 +2347,7 @@ func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error) {
 		err = errors.New(`code != 0`)
 		return
 	}
+	code = res.Data.Code
 	t.SetCookies(r.Response.Cookies())
 	return
 }
