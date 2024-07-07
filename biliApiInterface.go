@@ -13,6 +13,7 @@ import (
 type biliApiInter interface {
 	SetReqPool(pool *pool.Buf[reqf.Req])
 	SetProxy(proxy string)
+	SetLocation(secOfTimeZone int) // east positive
 	SetCookies(cookies []*http.Cookie)
 	GetCookies() (cookies []*http.Cookie)
 	GetCookie(name string) (error, string)

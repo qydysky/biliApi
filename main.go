@@ -24,16 +24,19 @@ const id = "github.com/qydysky/bili_danmu/F.biliApi"
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.3`
 
 func init() {
-	if e := cmp.Register[biliApiInter](id, &biliApi{}); e != nil {
+	if e := cmp.Register[biliApiInter](id, &biliApi{
+		location: time.UTC,
+	}); e != nil {
 		panic(e)
 	}
 }
 
 type biliApi struct {
-	proxy   string
-	pool    *pool.Buf[reqf.Req]
-	cookies []*http.Cookie
-	cache   psync.MapExceeded[string, *struct {
+	proxy    string
+	location *time.Location
+	pool     *pool.Buf[reqf.Req]
+	cookies  []*http.Cookie
+	cache    psync.MapExceeded[string, *struct {
 		IsLogin bool
 		WbiImg  struct {
 			ImgURL string
@@ -41,6 +44,11 @@ type biliApi struct {
 		}
 	}]
 	lock sync.RWMutex
+}
+
+// SetLocation implements biliApiInter.
+func (t *biliApi) SetLocation(secOfTimeZone int) {
+	t.location = time.FixedZone("CUS", secOfTimeZone)
 }
 
 // LiveHtml implements biliApiInter.
@@ -2293,7 +2301,7 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 				//直播间标题
 				res.Title = data.Title
 				//直播开始时间
-				if ti, e := time.Parse(time.DateTime, data.LiveTime); e != nil && !ti.IsZero() {
+				if ti, e := time.ParseInLocation(time.DateTime, data.LiveTime, t.location); e == nil && !ti.IsZero() {
 					res.LiveStartTime = ti
 				}
 				//是否在直播
