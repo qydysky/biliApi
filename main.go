@@ -46,6 +46,57 @@ type biliApi struct {
 	lock sync.RWMutex
 }
 
+// LikeReport implements biliApiInter.
+func (t *biliApi) LikeReport(hitCount, uid, roomid, upUid int) (err error) {
+	csrf := ""
+	if e, t := t.GetCookie(`bili_jct`); e == nil {
+		csrf = t
+	}
+
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+	err = req.Reqf(reqf.Rval{
+		Url:     "https://api.live.bilibili.com/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3",
+		PostStr: fmt.Sprintf("click_time=%d&uid=%d&room_id=%d&anchor_id=%d&csrf=%s&csrf_token=%s&visit_id=", hitCount, uid, roomid, upUid, csrf, csrf),
+		Retry:   2,
+		Timeout: 5 * 1000,
+		Proxy:   t.proxy,
+		Header: map[string]string{
+			`Host`:            `api.live.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/javascript, */*; q=0.01`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Content-Type`:    `application/x-www-form-urlencoded`,
+			`Origin`:          `https://live.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
+			`Cookie`:          t.GetCookiesS(),
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+
+	err = json.Unmarshal(req.Respon, &j)
+	if err != nil {
+		return
+	} else if j.Code != 0 {
+		err = errors.New(j.Message)
+		return
+	}
+
+	t.SetCookies(req.Response.Cookies())
+	return
+}
+
 // SetLocation implements biliApiInter.
 func (t *biliApi) SetLocation(secOfTimeZone int) {
 	t.location = time.FixedZone("CUS", secOfTimeZone)
@@ -1092,10 +1143,12 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 
 // GetFansMedal implements biliApiInter.
 func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
-	TargetID  int
-	IsLighted int
-	MedalID   int
-	RoomID    int
+	TodayFeed    int
+	TargetID     int
+	IsLighted    int
+	MedalID      int
+	RoomID       int
+	LivingStatus int
 }) {
 	//获取牌子列表
 	r := t.pool.Get()
@@ -1131,6 +1184,7 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 			Data    struct {
 				List []struct {
 					Medal struct {
+						TodayFeed int `json:"today_feed"`
 						TargetID  int `json:"target_id"`
 						MedalID   int `json:"medal_id"`
 						IsLighted int `json:"is_lighted"`
@@ -1139,11 +1193,13 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 						NickName string `json:"nick_name"`
 					} `json:"anchor_info"`
 					RoomInfo struct {
-						RoomID int `json:"room_id"`
+						RoomID       int `json:"room_id"`
+						LivingStatus int `json:"living_status"`
 					} `json:"room_info"`
 				} `json:"list"`
 				SpecialList []struct {
 					Medal struct {
+						TodayFeed int `json:"today_feed"`
 						TargetID  int `json:"target_id"`
 						MedalID   int `json:"medal_id"`
 						IsLighted int `json:"is_lighted"`
@@ -1152,7 +1208,8 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 						NickName string `json:"nick_name"`
 					} `json:"anchor_info"`
 					RoomInfo struct {
-						RoomID int `json:"room_id"`
+						RoomID       int `json:"room_id"`
+						LivingStatus int `json:"living_status"`
 					} `json:"room_info"`
 				} `json:"special_list"`
 				PageInfo struct {
@@ -1173,44 +1230,52 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 		t.SetCookies(r.Response.Cookies())
 		for i := 0; i < len(j.Data.SpecialList); i++ {
 			li := j.Data.SpecialList[i]
+			if RoomID != 0 && li.RoomInfo.RoomID != RoomID {
+				continue
+			}
+			if TargetID != 0 && TargetID != li.Medal.TargetID {
+				continue
+			}
 			res = append(res, struct {
-				TargetID  int
-				IsLighted int
-				MedalID   int
-				RoomID    int
+				TodayFeed    int
+				TargetID     int
+				IsLighted    int
+				MedalID      int
+				RoomID       int
+				LivingStatus int
 			}{
-				TargetID:  li.Medal.TargetID,
-				IsLighted: li.Medal.IsLighted,
-				MedalID:   li.Medal.MedalID,
-				RoomID:    li.RoomInfo.RoomID,
+				TodayFeed:    li.Medal.TodayFeed,
+				TargetID:     li.Medal.TargetID,
+				IsLighted:    li.Medal.IsLighted,
+				MedalID:      li.Medal.MedalID,
+				RoomID:       li.RoomInfo.RoomID,
+				LivingStatus: li.RoomInfo.LivingStatus,
 			})
-			if RoomID != 0 && li.RoomInfo.RoomID == RoomID {
-				return
-			}
-			if TargetID != 0 && li.Medal.TargetID == TargetID {
-				return
-			}
 		}
 
 		for i := 0; i < len(j.Data.List); i++ {
 			li := j.Data.List[i]
+			if RoomID != 0 && li.RoomInfo.RoomID != RoomID {
+				continue
+			}
+			if TargetID != 0 && TargetID != li.Medal.TargetID {
+				continue
+			}
 			res = append(res, struct {
-				TargetID  int
-				IsLighted int
-				MedalID   int
-				RoomID    int
+				TodayFeed    int
+				TargetID     int
+				IsLighted    int
+				MedalID      int
+				RoomID       int
+				LivingStatus int
 			}{
-				TargetID:  li.Medal.TargetID,
-				IsLighted: li.Medal.IsLighted,
-				MedalID:   li.Medal.MedalID,
-				RoomID:    li.RoomInfo.RoomID,
+				TodayFeed:    li.Medal.TodayFeed,
+				TargetID:     li.Medal.TargetID,
+				IsLighted:    li.Medal.IsLighted,
+				MedalID:      li.Medal.MedalID,
+				RoomID:       li.RoomInfo.RoomID,
+				LivingStatus: li.RoomInfo.LivingStatus,
 			})
-			if RoomID != 0 && li.RoomInfo.RoomID == RoomID {
-				return
-			}
-			if TargetID != 0 && li.Medal.TargetID == TargetID {
-				return
-			}
 		}
 
 		if j.Data.PageInfo.CurrentPage == j.Data.PageInfo.TotalPage {
