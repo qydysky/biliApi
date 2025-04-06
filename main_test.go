@@ -26,9 +26,12 @@ func TestMain(t *testing.T) {
 		},
 		100,
 	)
-	var api = cmp.Get(id, func(bai biliApiInter) biliApiInter {
-		bai.SetReqPool(reqPool)
-		return bai
+
+	var api = cmp.Get(id, cmp.PreFuncCu[biliApiInter]{
+		Initf: func(bai biliApiInter) biliApiInter {
+			bai.SetReqPool(reqPool)
+			return bai
+		},
 	})
 
 	if err, _, QrcodeKey := api.LoginQrCode(); err != nil {

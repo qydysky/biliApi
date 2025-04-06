@@ -538,46 +538,107 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 
-	err = req.Reqf(reqf.Rval{
-		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank?ruid=%d&roomId=%d&page=1&pageSize=10", upUid, roomid),
-		Header: map[string]string{
-			`Host`:            `api.live.bilibili.com`,
-			`User-Agent`:      UA,
-			`Accept`:          `application/json, text/plain, */*`,
-			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
-			`Accept-Encoding`: `gzip, deflate, br`,
-			`Origin`:          `https://live.bilibili.com`,
-			`Connection`:      `keep-alive`,
-			`Pragma`:          `no-cache`,
-			`Cache-Control`:   `no-cache`,
-			`Cookie`:          t.GetCookiesS(),
-		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-	})
-	if err != nil {
-		return
-	}
-	var j struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		TTL     int    `json:"ttl"`
-		Data    struct {
-			OnlineNum int `json:"onlineNum"`
-		} `json:"data"`
+	// api queryContributionRank
+	{
+		query := fmt.Sprintf("ruid=%d&room_id=%d&page=1&page_size=100&type=online_rank&switch=contribution_rank&platform=web&web_location=444.8", upUid, roomid)
+
+		if e, v := t.GetNav(); e != nil {
+			err = e
+			return
+		} else if e, queryE := t.Wbi(query, v.WbiImg); e != nil {
+			err = e
+			return
+		} else {
+			query = queryE
+		}
+
+		err = req.Reqf(reqf.Rval{
+			Url: "https://api.live.bilibili.com/xlive/general-interface/v1/rank/queryContributionRank?" + query,
+			Header: map[string]string{
+				`Host`:            `api.live.bilibili.com`,
+				`User-Agent`:      UA,
+				`Accept`:          `application/json, text/plain, */*`,
+				`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+				`Accept-Encoding`: `gzip, deflate, br`,
+				`Origin`:          `https://live.bilibili.com`,
+				`Connection`:      `keep-alive`,
+				`Pragma`:          `no-cache`,
+				`Cache-Control`:   `no-cache`,
+				`Cookie`:          t.GetCookiesS(),
+			},
+			Proxy:   t.proxy,
+			Timeout: 3 * 1000,
+		})
+		if err == nil {
+			var j struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				TTL     int    `json:"ttl"`
+				Data    struct {
+					Count int `json:"count"`
+				} `json:"data"`
+			}
+
+			err = json.Unmarshal(req.Respon, &j)
+			if err != nil {
+				return
+			} else if j.Code != 0 {
+				err = errors.New(j.Message)
+				return
+			}
+
+			OnlineNum = j.Data.Count
+
+			t.SetCookies(req.Response.Cookies())
+			return
+		}
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
-	if err != nil {
-		return
-	} else if j.Code != 0 {
-		err = errors.New(j.Message)
-		return
+	// api getOnlineGoldRank
+	{
+
+		err = req.Reqf(reqf.Rval{
+			Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/general-interface/v1/rank/getOnlineGoldRank?ruid=%d&roomId=%d&page=1&pageSize=10", upUid, roomid),
+			Header: map[string]string{
+				`Host`:            `api.live.bilibili.com`,
+				`User-Agent`:      UA,
+				`Accept`:          `application/json, text/plain, */*`,
+				`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+				`Accept-Encoding`: `gzip, deflate, br`,
+				`Origin`:          `https://live.bilibili.com`,
+				`Connection`:      `keep-alive`,
+				`Pragma`:          `no-cache`,
+				`Cache-Control`:   `no-cache`,
+				`Cookie`:          t.GetCookiesS(),
+			},
+			Proxy:   t.proxy,
+			Timeout: 3 * 1000,
+		})
+		if err == nil {
+			var j struct {
+				Code    int    `json:"code"`
+				Message string `json:"message"`
+				TTL     int    `json:"ttl"`
+				Data    struct {
+					OnlineNum int `json:"onlineNum"`
+				} `json:"data"`
+			}
+
+			err = json.Unmarshal(req.Respon, &j)
+			if err != nil {
+				return
+			} else if j.Code != 0 {
+				err = errors.New(j.Message)
+				return
+			}
+
+			OnlineNum = j.Data.OnlineNum
+
+			t.SetCookies(req.Response.Cookies())
+			return
+		}
 	}
 
-	OnlineNum = j.Data.OnlineNum
-
-	t.SetCookies(req.Response.Cookies())
 	return
 }
 
