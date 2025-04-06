@@ -8,7 +8,9 @@ import (
 	reqf "github.com/qydysky/part/reqf"
 )
 
-func TestMain(t *testing.T) {
+var api biliApiInter
+
+func init() {
 	var reqPool = pool.New(
 		pool.PoolFunc[reqf.Req]{
 			New: func() *reqf.Req {
@@ -26,14 +28,21 @@ func TestMain(t *testing.T) {
 		},
 		100,
 	)
-
-	var api = cmp.Get(id, cmp.PreFuncCu[biliApiInter]{
+	api = cmp.Get(id, cmp.PreFuncCu[biliApiInter]{
 		Initf: func(bai biliApiInter) biliApiInter {
 			bai.SetReqPool(reqPool)
 			return bai
 		},
 	})
+}
 
+func TestGetInfoByRoom(t *testing.T) {
+	if err, _ := api.GetInfoByRoom(213); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMain(t *testing.T) {
 	if err, _, QrcodeKey := api.LoginQrCode(); err != nil {
 		t.Fatal(err)
 	} else if err, _ := api.LoginQrPoll(QrcodeKey); err != nil {
@@ -41,10 +50,6 @@ func TestMain(t *testing.T) {
 	}
 
 	if err, _ := api.GetRoomBaseInfo(213); err != nil {
-		t.Fatal(err)
-	}
-
-	if err, _ := api.GetInfoByRoom(213); err != nil {
 		t.Fatal(err)
 	}
 

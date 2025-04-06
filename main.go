@@ -1899,8 +1899,21 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 }) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
+
+	query := fmt.Sprintf("room_id=%d&web_location=444.8", Roomid)
+
+	if e, v := t.GetNav(); e != nil {
+		err = e
+		return
+	} else if e, queryE := t.Wbi(query, v.WbiImg); e != nil {
+		err = e
+		return
+	} else {
+		query = queryE
+	}
+
 	err = req.Reqf(reqf.Rval{
-		Url: fmt.Sprintf("https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom?room_id=%d", Roomid),
+		Url: "https://api.live.bilibili.com/xlive/web-room/v1/index/getInfoByRoom?" + query,
 		Header: map[string]string{
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 		},
