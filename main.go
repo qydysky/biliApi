@@ -1312,6 +1312,9 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 				RoomID:       li.RoomInfo.RoomID,
 				LivingStatus: li.RoomInfo.LivingStatus,
 			})
+			if RoomID != 0 || TargetID != 0 {
+				return
+			}
 		}
 
 		for i := 0; i < len(j.Data.List); i++ {
@@ -1337,6 +1340,9 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 				RoomID:       li.RoomInfo.RoomID,
 				LivingStatus: li.RoomInfo.LivingStatus,
 			})
+			if RoomID != 0 || TargetID != 0 {
+				return
+			}
 		}
 
 		if j.Data.PageInfo.CurrentPage == j.Data.PageInfo.TotalPage {
