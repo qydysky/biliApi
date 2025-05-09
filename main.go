@@ -863,6 +863,11 @@ func (t *biliApi) Silver2coin() (err error, Message string) {
 
 // GetWalletRule implements biliApiInter.
 func (t *biliApi) GetWalletRule() (err error, Silver2CoinPrice int) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
+
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -1091,6 +1096,10 @@ func (t *biliApi) GetOtherCookies() (err error) {
 
 // DoSign implements biliApiInter.
 func (t *biliApi) DoSign() (err error, HadSignDays int) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -1260,6 +1269,10 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 	RoomID       int
 	LivingStatus int
 }) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
 	//获取牌子列表
 	r := t.pool.Get()
 	defer t.pool.Put(r)
@@ -1943,7 +1956,7 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 			someRenew = true
 		}
 	}
-	if someRenew {
+	if t.cookiesCallback != nil && someRenew {
 		t.cookiesCallback(t.cookies)
 	}
 }

@@ -1,6 +1,7 @@
 package biliApi
 
 import (
+	"errors"
 	"testing"
 
 	cmp "github.com/qydysky/part/component2"
@@ -77,7 +78,7 @@ func TestMain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.GetFollowing(); err.Error() != "账号未登录" {
+	if err, _ := api.GetFollowing(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
@@ -85,27 +86,27 @@ func TestMain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := api.RoomEntryAction(92613); err != nil {
+	if err := api.RoomEntryAction(92613); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.GetHisStream(); err.Error() != "账号未登录" {
+	if err, _ := api.GetHisStream(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.Silver2coin(); err != nil {
+	if err, _ := api.Silver2coin(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.GetWalletRule(); err.Error() != "账号未登录" {
+	if err, _ := api.GetWalletRule(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.GetWalletStatus(); err.Error() != "账号未登录" {
+	if err, _ := api.GetWalletStatus(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.GetBagList(213); err.Error() != "账号未登录" {
+	if err, _ := api.GetBagList(213); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 
@@ -113,19 +114,19 @@ func TestMain(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err, _ := api.DoSign(); err.Error() != "账号未登录" {
+	if err, _ := api.DoSign(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
-	if err, _ := api.GetWebGetSignInfo(); err.Error() != "账号未登录" {
+	if err, _ := api.GetWebGetSignInfo(); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 	if err := api.SetFansMedal(0); err.Error() != `405 Method Not Allowed` {
 		t.Fatal(err)
 	}
-	if err, _ := api.GetFansMedal(213, 0); err.Error() != "账号未登录" {
+	if err, _ := api.GetFansMedal(213, 0); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
-	if err, _ := api.GetWearedMedal(29183321, 92613); err.Error() != "账号未登录" {
+	if err, _ := api.GetWearedMedal(29183321, 92613); !errors.Is(err, ErrNeedLogin) {
 		t.Fatal(err)
 	}
 	if err, _ := api.GetGuardNum(13046, 92613); err != nil {
