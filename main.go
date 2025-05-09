@@ -23,6 +23,8 @@ import (
 const id = "github.com/qydysky/bili_danmu/F.biliApi"
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.3`
 
+var ErrNeedLogin = errors.New(`ErrNeedLogin`)
+
 func init() {
 	if e := cmp.Register[biliApiInter](id, &biliApi{
 		location: time.UTC,
@@ -43,7 +45,23 @@ type biliApi struct {
 			SubURL string
 		}
 	}]
-	lock sync.RWMutex
+	cookiesCallback func(cookies []*http.Cookie)
+	lock            sync.RWMutex
+}
+
+// IsLogin implements biliApiInter.
+func (t *biliApi) IsLogin() bool {
+	for _, n := range []string{`bili_jct`, `DedeUserID`, `LIVE_BUVID`} {
+		if e, _ := t.GetCookie(n); e != nil {
+			return false
+		}
+	}
+	return true
+}
+
+// SetCookiesCallback implements biliApiInter.
+func (t *biliApi) SetCookiesCallback(f func(cookies []*http.Cookie)) {
+	t.cookiesCallback = f
 }
 
 // LikeReport implements biliApiInter.
@@ -461,6 +479,10 @@ func (t *biliApi) GetFollowing() (err error, res []struct {
 	Title      string
 	LiveStatus int
 }) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	for pageNum := 1; true; pageNum += 1 {
@@ -644,6 +666,11 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 
 // RoomEntryAction implements biliApiInter.
 func (t *biliApi) RoomEntryAction(Roomid int) (err error) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
+
 	csrf := ""
 	if e, t := t.GetCookie(`bili_jct`); e == nil {
 		csrf = t
@@ -699,6 +726,10 @@ func (t *biliApi) GetHisStream() (err error, res []struct {
 	Roomid     int
 	LiveStatus int
 }) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -778,6 +809,11 @@ func (t *biliApi) GetCookiesS() (cookies string) {
 
 // Silver2coin implements biliApiInter.
 func (t *biliApi) Silver2coin() (err error, Message string) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
+
 	e, csrf := t.GetCookie(`bili_jct`)
 	if e != nil {
 		return err, ""
@@ -878,6 +914,10 @@ func (t *biliApi) GetWalletStatus() (err error, res struct {
 	Silver          int
 	Silver2CoinLeft int
 }) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
@@ -937,6 +977,11 @@ func (t *biliApi) GetBagList(Roomid int) (err error, res []struct {
 	Gift_num  int
 	Expire_at int
 }) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
+
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 
@@ -1093,6 +1138,10 @@ func (t *biliApi) DoSign() (err error, HadSignDays int) {
 
 // GetWebGetSignInfo implements biliApiInter.
 func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
 
 	req := t.pool.Get()
 	defer t.pool.Put(req)
@@ -1361,6 +1410,11 @@ func (t *biliApi) GetWearedMedal(uid, upUid int) (err error, res struct {
 	RoomID        int
 	TargetID      int
 }) {
+	if !t.IsLogin() {
+		err = ErrNeedLogin
+		return
+	}
+
 	csrf := ""
 	if e, t := t.GetCookie(`bili_jct`); e == nil {
 		csrf = t
@@ -1873,10 +1927,12 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	var someRenew bool
 	for i := 0; i < len(cookies); i++ {
 		found := false
 		for k := 0; k < len(t.cookies); k++ {
 			if t.cookies[k].Name == cookies[i].Name {
+				someRenew = someRenew || t.cookies[k].Value == cookies[i].Value
 				t.cookies[k].Value = cookies[i].Value
 				found = true
 				break
@@ -1884,7 +1940,11 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 		}
 		if !found {
 			t.cookies = append(t.cookies, cookies[i])
+			someRenew = true
 		}
+	}
+	if someRenew {
+		t.cookiesCallback(t.cookies)
 	}
 }
 
