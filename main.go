@@ -103,7 +103,7 @@ func (t *biliApi) LikeReport(hitCount, uid, roomid, upUid int) (err error) {
 		Message string `json:"message"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	err = req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -111,7 +111,10 @@ func (t *biliApi) LikeReport(hitCount, uid, roomid, upUid int) (err error) {
 		return
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -264,82 +267,86 @@ func (t *biliApi) LiveHtml(Roomid int) (err error, res struct {
 		} `json:"roomInfoRes"`
 	}
 
-	if bs := bytes.Split(req.Respon, []byte("<script>window.__NEPTUNE_IS_MY_WAIFU__=")); len(bs) < 2 {
-		err = errors.New("不存在__NEPTUNE_IS_MY_WAIFU__")
-		return
-	} else if bs = bytes.Split(bs[1], []byte("</script>")); len(bs) < 1 {
-		err = errors.New("不存在__NEPTUNE_IS_MY_WAIFU__")
-		return
-	} else {
-		err = json.Unmarshal(bs[0], &j)
-		if err != nil {
-			return
-		} else if j.RoomInitRes.Code != 0 {
-			err = errors.New(j.RoomInitRes.Message)
-			return
-		}
+	err = req.Respon(func(b []byte) error {
+		if bs := bytes.Split(b, []byte("<script>window.__NEPTUNE_IS_MY_WAIFU__=")); len(bs) < 2 {
+			return errors.New("不存在__NEPTUNE_IS_MY_WAIFU__")
+		} else if bs = bytes.Split(bs[1], []byte("</script>")); len(bs) < 1 {
+			return errors.New("不存在__NEPTUNE_IS_MY_WAIFU__")
+		} else {
+			err = json.Unmarshal(bs[0], &j)
+			if err != nil {
+				return err
+			} else if j.RoomInitRes.Code != 0 {
+				return errors.New(j.RoomInitRes.Message)
+			}
 
-		res = struct {
-			RoomInitRes struct {
-				Code    int
-				Message string
-				TTL     int
-				Data    struct {
-					RoomID      int
-					UID         int
-					LiveStatus  int
-					LiveTime    int
-					PlayurlInfo struct {
-						ConfJSON string
-						Playurl  struct {
-							Stream []struct {
-								ProtocolName string
-								Format       []struct {
-									FormatName string
-									Codec      []struct {
-										CodecName string
-										CurrentQn int
-										AcceptQn  []int
-										BaseURL   string
-										URLInfo   []struct {
-											Host      string
-											Extra     string
-											StreamTTL int
+			res = struct {
+				RoomInitRes struct {
+					Code    int
+					Message string
+					TTL     int
+					Data    struct {
+						RoomID      int
+						UID         int
+						LiveStatus  int
+						LiveTime    int
+						PlayurlInfo struct {
+							ConfJSON string
+							Playurl  struct {
+								Stream []struct {
+									ProtocolName string
+									Format       []struct {
+										FormatName string
+										Codec      []struct {
+											CodecName string
+											CurrentQn int
+											AcceptQn  []int
+											BaseURL   string
+											URLInfo   []struct {
+												Host      string
+												Extra     string
+												StreamTTL int
+											}
+											HdrQn     any
+											DolbyType int
+											AttrName  string
 										}
-										HdrQn     any
-										DolbyType int
-										AttrName  string
 									}
 								}
 							}
 						}
 					}
 				}
-			}
-			RoomInfoRes struct {
-				Code    int
-				Message string
-				TTL     int
-				Data    struct {
-					RoomInfo struct {
-						Title        string
-						LockStatus   int
-						AreaID       int
-						ParentAreaID int
+				RoomInfoRes struct {
+					Code    int
+					Message string
+					TTL     int
+					Data    struct {
+						RoomInfo struct {
+							Title        string
+							LockStatus   int
+							AreaID       int
+							ParentAreaID int
+						}
+						AnchorInfo      struct{ BaseInfo struct{ Uname string } }
+						PopularRankInfo struct {
+							Rank     int
+							RankName string
+						}
+						GuardInfo struct{ Count int }
 					}
-					AnchorInfo      struct{ BaseInfo struct{ Uname string } }
-					PopularRankInfo struct {
-						Rank     int
-						RankName string
-					}
-					GuardInfo struct{ Count int }
 				}
-			}
-		}(j)
+			}(j)
 
-		t.SetCookies(req.Response.Cookies())
-		return
-	}
+			req.Response(func(r *http.Response) error {
+				t.SetCookies(r.Cookies())
+				return nil
+			})
+		}
+		return nil
+	})
+	return
+
 }
 
 // SearchUP implements biliApiInter.
@@ -389,7 +396,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -411,7 +418,10 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		})
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -442,7 +452,7 @@ func (t *biliApi) GetHisDanmu(Roomid int) (err error, res []string) {
 		Message string `json:"message"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -456,7 +466,10 @@ func (t *biliApi) GetHisDanmu(Roomid int) (err error, res []string) {
 		}
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -523,7 +536,7 @@ func (t *biliApi) GetFollowing() (err error, res []struct {
 			} `json:"data"`
 		}
 
-		err = json.Unmarshal(req.Respon, &j)
+		req.ResponUnmarshal(json.Unmarshal, &j)
 		if err != nil {
 			return
 		} else if j.Code != 0 {
@@ -551,7 +564,10 @@ func (t *biliApi) GetFollowing() (err error, res []struct {
 		time.Sleep(time.Second)
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -601,7 +617,7 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 				} `json:"data"`
 			}
 
-			err = json.Unmarshal(req.Respon, &j)
+			req.ResponUnmarshal(json.Unmarshal, &j)
 			if err != nil {
 				return
 			} else if j.Code != 0 {
@@ -611,7 +627,10 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 
 			OnlineNum = j.Data.Count
 
-			t.SetCookies(req.Response.Cookies())
+			req.Response(func(r *http.Response) error {
+				t.SetCookies(r.Cookies())
+				return nil
+			})
 			return
 		}
 	}
@@ -646,7 +665,7 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 				} `json:"data"`
 			}
 
-			err = json.Unmarshal(req.Respon, &j)
+			req.ResponUnmarshal(json.Unmarshal, &j)
 			if err != nil {
 				return
 			} else if j.Code != 0 {
@@ -656,7 +675,10 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 
 			OnlineNum = j.Data.OnlineNum
 
-			t.SetCookies(req.Response.Cookies())
+			req.Response(func(r *http.Response) error {
+				t.SetCookies(r.Cookies())
+				return nil
+			})
 			return
 		}
 	}
@@ -707,7 +729,7 @@ func (t *biliApi) RoomEntryAction(Roomid int) (err error) {
 		Message string `json:"message"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -715,7 +737,10 @@ func (t *biliApi) RoomEntryAction(Roomid int) (err error) {
 		return
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -768,7 +793,7 @@ func (t *biliApi) GetHisStream() (err error, res []struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -790,7 +815,10 @@ func (t *biliApi) GetHisStream() (err error, res []struct {
 		})
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -849,7 +877,7 @@ func (t *biliApi) Silver2coin() (err error, Message string) {
 		Message string `json:"message"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -857,7 +885,10 @@ func (t *biliApi) Silver2coin() (err error, Message string) {
 		return
 	}
 	Message = j.Message
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -901,7 +932,7 @@ func (t *biliApi) GetWalletRule() (err error, Silver2CoinPrice int) {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -910,7 +941,10 @@ func (t *biliApi) GetWalletRule() (err error, Silver2CoinPrice int) {
 	}
 
 	Silver2CoinPrice = j.Data.Silver2CoinPrice
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -957,7 +991,7 @@ func (t *biliApi) GetWalletStatus() (err error, res struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -970,7 +1004,10 @@ func (t *biliApi) GetWalletStatus() (err error, res struct {
 		Silver2CoinLeft int
 	}(j.Data)
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1027,7 +1064,7 @@ func (t *biliApi) GetBagList(Roomid int) (err error, res []struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1041,7 +1078,10 @@ func (t *biliApi) GetBagList(Roomid int) (err error, res []struct {
 		Gift_num  int
 		Expire_at int
 	}(j.Data.List)
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1070,7 +1110,10 @@ func (t *biliApi) GetLiveBuvid(Roomid int) (err error) {
 	if err != nil {
 		return
 	}
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1090,7 +1133,10 @@ func (t *biliApi) GetOtherCookies() (err error) {
 	if err != nil {
 		return
 	}
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1132,7 +1178,7 @@ func (t *biliApi) DoSign() (err error, HadSignDays int) {
 			HadSignDays int `json:"hadSignDays"`
 		} `json:"data"`
 	}
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1141,7 +1187,10 @@ func (t *biliApi) DoSign() (err error, HadSignDays int) {
 	}
 
 	HadSignDays = j.Data.HadSignDays
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1186,7 +1235,7 @@ func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1194,7 +1243,10 @@ func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
 		return
 	}
 	Status = j.Data.Status
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1248,7 +1300,7 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 		TTL     int    `json:"ttl"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1256,7 +1308,10 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 		return
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1342,7 +1397,7 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 			} `json:"data"`
 		}
 
-		err = json.Unmarshal(r.Respon, &j)
+		err = r.ResponUnmarshal(json.Unmarshal, &j)
 		if err != nil {
 			return
 		} else if j.Code != 0 {
@@ -1350,7 +1405,10 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 			return
 		}
 
-		t.SetCookies(r.Response.Cookies())
+		r.Response(func(r *http.Response) error {
+			t.SetCookies(r.Cookies())
+			return nil
+		})
 		for i := 0; i < len(j.Data.SpecialList); i++ {
 			li := j.Data.SpecialList[i]
 			if RoomID != 0 && li.RoomInfo.RoomID != RoomID {
@@ -1463,7 +1521,7 @@ func (t *biliApi) GetWearedMedal(uid, upUid int) (err error, res struct {
 		} `json:"roominfo"`
 	}
 
-	err = json.Unmarshal(r.Respon, &j)
+	err = r.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1471,7 +1529,10 @@ func (t *biliApi) GetWearedMedal(uid, upUid int) (err error, res struct {
 		return
 	}
 
-	t.SetCookies(r.Response.Cookies())
+	r.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	switch j.Data.(type) {
 	case any:
 		return
@@ -1555,7 +1616,7 @@ func (t *biliApi) GetNav() (err error, res struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else {
@@ -1566,7 +1627,10 @@ func (t *biliApi) GetNav() (err error, res struct {
 
 	f(&res, time.Hour)
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1609,7 +1673,7 @@ func (t *biliApi) GetGuardNum(upUid int, roomid int) (err error, GuardNum int) {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1620,7 +1684,10 @@ func (t *biliApi) GetGuardNum(upUid int, roomid int) (err error, GuardNum int) {
 	//获取舰长数
 	GuardNum = j.Data.Info.Num
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1663,7 +1730,7 @@ func (t *biliApi) GetPopularAnchorRank(uid int, upUid int, roomid int) (err erro
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1679,7 +1746,10 @@ func (t *biliApi) GetPopularAnchorRank(uid int, upUid int, roomid int) (err erro
 		note += strconv.Itoa(j.Data.Anchor.Rank)
 	}
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1710,7 +1780,7 @@ func (t *biliApi) GetDanmuMedalAnchorInfo(Uid string, Roomid int) (err error, rf
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1720,7 +1790,10 @@ func (t *biliApi) GetDanmuMedalAnchorInfo(Uid string, Roomid int) (err error, rf
 
 	rface = j.Data.Rface + `@58w_58h`
 
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1777,7 +1850,7 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1797,7 +1870,10 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 		}
 	}
 	res.WSURL = tmp
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -1905,7 +1981,7 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 		} `json:"data"`
 	}
 
-	err = json.Unmarshal(req.Respon, &j)
+	req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -1945,7 +2021,10 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 			}
 		}
 	}(j.Data.PlayurlInfo.Playurl.Stream)
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -2407,7 +2486,7 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 			} `json:"data"`
 		}
 
-		err = json.Unmarshal(req.Respon, &j)
+		req.ResponUnmarshal(json.Unmarshal, &j)
 		if err != nil {
 			return
 		} else if j.Code != 0 {
@@ -2445,7 +2524,10 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 		//直播间是否被封禁
 		res.Locked = j.Data.RoomInfo.LockStatus == 1
 	}
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -2513,7 +2595,7 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 			} `json:"data"`
 		}
 
-		err = json.Unmarshal(req.Respon, &j)
+		req.ResponUnmarshal(json.Unmarshal, &j)
 		if err != nil {
 			return
 		} else if j.Code != 0 {
@@ -2545,7 +2627,10 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 			}
 		}
 	}
-	t.SetCookies(req.Response.Cookies())
+	req.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -2577,7 +2662,7 @@ func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error, code int) {
 		} `json:"data"`
 	}
 
-	if e := json.Unmarshal(r.Respon, &res); e != nil {
+	if e := r.ResponUnmarshal(json.Unmarshal, &res); e != nil {
 		err = e
 		return
 	}
@@ -2587,7 +2672,10 @@ func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error, code int) {
 		return
 	}
 	code = res.Data.Code
-	t.SetCookies(r.Response.Cookies())
+	r.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
@@ -2619,7 +2707,7 @@ func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 		} `json:"data"`
 	}
 
-	if e := json.Unmarshal(r.Respon, &res); e != nil {
+	if e := r.ResponUnmarshal(json.Unmarshal, &res); e != nil {
 		err = e
 		return
 	}
@@ -2640,7 +2728,10 @@ func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 	} else {
 		QrcodeKey = res.Data.QrcodeKey
 	}
-	t.SetCookies(r.Response.Cookies())
+	r.Response(func(r *http.Response) error {
+		t.SetCookies(r.Cookies())
+		return nil
+	})
 	return
 }
 
