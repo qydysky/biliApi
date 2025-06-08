@@ -2,7 +2,9 @@ package biliApi
 
 import (
 	"bytes"
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1631,6 +1633,84 @@ func (t *biliApi) GetNav() (err error, res struct {
 		t.SetCookies(r.Cookies())
 		return nil
 	})
+
+	err = t.GenWebTicket()
+
+	return
+}
+
+func (t *biliApi) GenWebTicket() (err error) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
+
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+
+	csrf := ""
+	if e, t := t.GetCookie(`bili_jct`); e == nil {
+		csrf = t
+	}
+
+	secret := []byte("YhxToH[2q")
+	for i := range secret {
+		secret[i] -= 1
+	}
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(`ts` + ts))
+
+	query := fmt.Sprintf("key_id=ec02&hexsign=%s&context[ts]=%s&csrf=%s", fmt.Sprintf("%x", mac.Sum(nil)[:32]), ts, csrf)
+
+	err = req.Reqf(reqf.Rval{
+		Method: "POST",
+		Url:    `https://api.bilibili.com/bapis/bilibili.api.ticket.v1.Ticket/GenWebTicket?` + query,
+		Header: map[string]string{
+			`Host`:            `api.bilibili.com`,
+			`User-Agent`:      UA,
+			`Accept`:          `application/json, text/plain, */*`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Accept-Encoding`: `gzip, deflate, br`,
+			`Origin`:          `https://t.bilibili.com`,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
+			`Cookie`:          t.GetCookiesS(),
+		},
+		Proxy:   t.proxy,
+		Timeout: 3 * 1000,
+		Retry:   2,
+	})
+	if err != nil {
+		return
+	}
+
+	var j struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		Data    struct {
+			Ticket    string `json:"ticket"`
+			CreatedAt int    `json:"created_at"`
+			TTL       int    `json:"ttl"`
+			Context   struct {
+			} `json:"context"`
+			Nav struct {
+				Img string `json:"img"`
+				Sub string `json:"sub"`
+			} `json:"nav"`
+		} `json:"data"`
+		TTL int `json:"ttl"`
+	}
+
+	req.ResponUnmarshal(json.Unmarshal, &j)
+	if err != nil {
+		return
+	} else {
+		t.SetCookies([]*http.Cookie{
+			{
+				Name:  "bili_ticket",
+				Value: j.Data.Ticket,
+			},
+		})
+	}
 	return
 }
 
@@ -1829,6 +1909,11 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 	if err != nil {
 		return
 	}
+
+	req.Respon(func(b []byte) error {
+		fmt.Println(string(b))
+		return nil
+	})
 
 	var j struct {
 		Code    int    `json:"code"`

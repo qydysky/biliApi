@@ -88,6 +88,7 @@ type biliApiInter interface {
 			SubURL string
 		}
 	})
+	GenWebTicket() (err error)
 	Wbi(query string, WbiImg struct {
 		ImgURL string
 		SubURL string
