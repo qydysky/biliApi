@@ -1910,11 +1910,6 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 		return
 	}
 
-	req.Respon(func(b []byte) error {
-		fmt.Println(string(b))
-		return nil
-	})
-
 	var j struct {
 		Code    int    `json:"code"`
 		Message string `json:"message"`
