@@ -574,7 +574,7 @@ func (t *biliApi) GetFollowing() (err error, res []struct {
 }
 
 // getOnlineGoldRank implements biliApiInter.
-func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum int) {
+func (t *biliApi) QueryContributionRank(upUid int, roomid int) (err error, OnlineNum int) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 
@@ -633,10 +633,15 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 				t.SetCookies(r.Cookies())
 				return nil
 			})
-			return
 		}
 	}
+	return
+}
 
+// getOnlineGoldRank implements biliApiInter.
+func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum int) {
+	req := t.pool.Get()
+	defer t.pool.Put(req)
 	// api getOnlineGoldRank
 	{
 

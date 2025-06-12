@@ -82,6 +82,10 @@ func TestMain(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err, _ := api.QueryContributionRank(13046, 92613); err != nil {
+		t.Fatal(err)
+	}
+
 	if err, _ := api.GetOnlineGoldRank(13046, 92613); err != nil {
 		t.Fatal(err)
 	}
