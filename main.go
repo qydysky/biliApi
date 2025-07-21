@@ -358,7 +358,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 	Is_live bool
 }) {
 
-	query := "page=1&page_size=10&order=online&platform=pc&search_type=live_user&keyword=" + url.PathEscape(s)
+	query := "page=1&page_size=10&order=online&platform=pc&search_type=live_user&keyword=" + s
 
 	if e, v := t.GetNav(); e != nil {
 		err = e
@@ -376,7 +376,8 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		Url:   "https://api.bilibili.com/x/web-interface/wbi/search/type?" + query,
 		Proxy: t.proxy,
 		Header: map[string]string{
-			`Cookie`: t.GetCookiesS(),
+			`Cookie`:  t.GetCookiesS(),
+			`Referer`: `https://search.bilibili.com/`,
 		},
 		Timeout: 10 * 1000,
 		Retry:   2,
@@ -398,7 +399,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		} `json:"data"`
 	}
 
-	req.ResponUnmarshal(json.Unmarshal, &j)
+	err = req.ResponUnmarshal(json.Unmarshal, &j)
 	if err != nil {
 		return
 	} else if j.Code != 0 {
@@ -420,7 +421,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		})
 	}
 
-	req.Response(func(r *http.Response) error {
+	err = req.Response(func(r *http.Response) error {
 		t.SetCookies(r.Cookies())
 		return nil
 	})

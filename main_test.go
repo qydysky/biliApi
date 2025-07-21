@@ -43,6 +43,14 @@ func TestGetInfoByRoom(t *testing.T) {
 	}
 }
 
+func TestSearchUP(t *testing.T) {
+	if err, a := api.SearchUP("C酱"); err != nil {
+		t.Fatal(err)
+	} else if len(a) == 0 {
+		t.Fatal()
+	}
+}
+
 func TestMain(t *testing.T) {
 	if err, _, QrcodeKey := api.LoginQrCode(); err != nil {
 		t.Fatal(err)
