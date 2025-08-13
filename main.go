@@ -53,7 +53,7 @@ type biliApi struct {
 
 // IsLogin implements biliApiInter.
 func (t *biliApi) IsLogin() bool {
-	for _, n := range []string{`bili_jct`, `DedeUserID`, `LIVE_BUVID`} {
+	for _, n := range []string{`bili_jct`, `DedeUserID`} {
 		if e, _ := t.GetCookie(n); e != nil {
 			return false
 		}
