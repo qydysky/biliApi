@@ -2123,7 +2123,7 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 		found := false
 		for k := 0; k < len(t.cookies); k++ {
 			if t.cookies[k].Name == cookies[i].Name {
-				someRenew = someRenew || t.cookies[k].Value == cookies[i].Value
+				someRenew = someRenew || t.cookies[k].Value != cookies[i].Value
 				t.cookies[k].Value = cookies[i].Value
 				found = true
 				break
@@ -2135,6 +2135,7 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie) {
 		}
 	}
 	if t.cookiesCallback != nil && someRenew {
+		t.cache.Delete(`webImg`)
 		t.cookiesCallback(t.cookies)
 	}
 }
