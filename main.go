@@ -358,7 +358,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 	Is_live bool
 }) {
 
-	query := "page=1&page_size=10&order=online&platform=pc&search_type=live_user&keyword=" + s
+	query := "page=1&page_size=10&order=online&platform=pc&user_type=1&search_type=bili_user&keyword=" + s
 
 	if e, v := t.GetNav(); e != nil {
 		err = e
@@ -392,9 +392,9 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		TTL     int    `json:"ttl"`
 		Data    struct {
 			Result []struct {
-				IsLive bool   `json:"is_live"`
+				IsLive int    `json:"is_live"`
 				Uname  string `json:"uname"`
-				Roomid int    `json:"roomid"`
+				Roomid int    `json:"room_id"`
 			} `json:"result"`
 		} `json:"data"`
 	}
@@ -417,7 +417,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		}{
 			Roomid:  j.Data.Result[i].Roomid,
 			Uname:   uname,
-			Is_live: j.Data.Result[i].IsLive,
+			Is_live: j.Data.Result[i].IsLive == 1,
 		})
 	}
 

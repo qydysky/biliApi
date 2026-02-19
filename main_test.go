@@ -48,6 +48,10 @@ func TestSearchUP(t *testing.T) {
 		t.Fatal(err)
 	} else if len(a) == 0 {
 		t.Fatal()
+	} else {
+		for i := 0; i < len(a); i++ {
+			t.Log(a[i])
+		}
 	}
 }
 
