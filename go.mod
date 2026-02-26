@@ -1,8 +1,8 @@
 module github.com/qydysky/biliApi
 
-go 1.25
+go 1.26
 
-require github.com/qydysky/part v0.28.20250813142323
+require github.com/qydysky/part v0.28.20260226133010
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
