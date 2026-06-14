@@ -36,11 +36,12 @@ func init() {
 }
 
 type biliApi struct {
-	proxy    string
-	location *time.Location
-	pool     *pool.Buf[reqf.Req]
-	cookies  []*http.Cookie
-	cache    psync.MapExceeded[string, *struct {
+	proxy              string
+	disableSystemProxy bool
+	location           *time.Location
+	pool               *pool.Buf[reqf.Req]
+	cookies            []*http.Cookie
+	cache              psync.MapExceeded[string, *struct {
 		IsLogin bool
 		WbiImg  struct {
 			ImgURL string
@@ -76,11 +77,12 @@ func (t *biliApi) LikeReport(hitCount, uid, roomid, upUid int) (err error) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
-		Url:     "https://api.live.bilibili.com/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3",
-		PostStr: fmt.Sprintf("click_time=%d&uid=%d&room_id=%d&anchor_id=%d&csrf=%s&csrf_token=%s&visit_id=", hitCount, uid, roomid, upUid, csrf, csrf),
-		Retry:   2,
-		Timeout: 5 * 1000,
-		Proxy:   t.proxy,
+		Url:                "https://api.live.bilibili.com/xlive/app-ucenter/v1/like_info_v3/like/likeReportV3",
+		PostStr:            fmt.Sprintf("click_time=%d&uid=%d&room_id=%d&anchor_id=%d&csrf=%s&csrf_token=%s&visit_id=", hitCount, uid, roomid, upUid, csrf, csrf),
+		Retry:              2,
+		Timeout:            5 * 1000,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
 		Header: map[string]string{
 			`Host`:            `api.live.bilibili.com`,
 			`User-Agent`:      UA,
@@ -198,8 +200,9 @@ func (t *biliApi) LiveHtml(Roomid int) (err error, res struct {
 			`Cache-Control`:   `no-cache`,
 			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 		},
-		Url:   fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
-		Proxy: t.proxy,
+		Url:                fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
 	})
 	if err != nil {
 		return
@@ -373,8 +376,9 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
-		Url:   "https://api.bilibili.com/x/web-interface/wbi/search/type?" + query,
-		Proxy: t.proxy,
+		Url:                "https://api.bilibili.com/x/web-interface/wbi/search/type?" + query,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
 		Header: map[string]string{
 			`Cookie`:  t.GetCookiesS(),
 			`Referer`: `https://search.bilibili.com/`,
@@ -437,9 +441,10 @@ func (t *biliApi) GetHisDanmu(Roomid int) (err error, res []string) {
 		Header: map[string]string{
 			`Referer`: "https://live.bilibili.com/" + strconv.Itoa(Roomid),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -481,10 +486,11 @@ func (t *biliApi) IsConnected() (err error) {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	return req.Reqf(reqf.Rval{
-		Url:              "https://www.bilibili.com",
-		Proxy:            t.proxy,
-		Timeout:          10 * 1000,
-		JustResponseCode: true,
+		Url:                "https://www.bilibili.com",
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		JustResponseCode:   true,
 	})
 }
 
@@ -517,9 +523,10 @@ func (t *biliApi) GetFollowing() (err error, res []struct {
 				`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
 				`Cookie`:          t.GetCookiesS(),
 			},
-			Proxy:   t.proxy,
-			Timeout: 3 * 1000,
-			Retry:   2,
+			Proxy:              t.proxy,
+			DisableSystemProxy: t.disableSystemProxy,
+			Timeout:            3 * 1000,
+			Retry:              2,
 		})
 		if err != nil {
 			return
@@ -607,8 +614,9 @@ func (t *biliApi) QueryContributionRank(upUid int, roomid int) (err error, Onlin
 				`Cache-Control`:   `no-cache`,
 				`Cookie`:          t.GetCookiesS(),
 			},
-			Proxy:   t.proxy,
-			Timeout: 3 * 1000,
+			Proxy:              t.proxy,
+			DisableSystemProxy: t.disableSystemProxy,
+			Timeout:            3 * 1000,
 		})
 		if err == nil {
 			var j struct {
@@ -660,8 +668,9 @@ func (t *biliApi) GetOnlineGoldRank(upUid int, roomid int) (err error, OnlineNum
 				`Cache-Control`:   `no-cache`,
 				`Cookie`:          t.GetCookiesS(),
 			},
-			Proxy:   t.proxy,
-			Timeout: 3 * 1000,
+			Proxy:              t.proxy,
+			DisableSystemProxy: t.disableSystemProxy,
+			Timeout:            3 * 1000,
 		})
 		if err == nil {
 			var j struct {
@@ -725,9 +734,10 @@ func (t *biliApi) RoomEntryAction(Roomid int) (err error) {
 			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -780,9 +790,10 @@ func (t *biliApi) GetHisStream() (err error, res []struct {
 			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -873,9 +884,10 @@ func (t *biliApi) Silver2coin() (err error, Message string) {
 			`Referer`:         `https://link.bilibili.com/p/center/index`,
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -924,9 +936,10 @@ func (t *biliApi) GetWalletRule() (err error, Silver2CoinPrice int) {
 			`Referer`:         `https://link.bilibili.com/p/center/index`,
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -982,9 +995,10 @@ func (t *biliApi) GetWalletStatus() (err error, res struct {
 			`Referer`:         `https://link.bilibili.com/p/center/index`,
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1050,9 +1064,10 @@ func (t *biliApi) GetBagList(Roomid int) (err error, res []struct {
 			`Referer`:         "https://live.bilibili.com/" + strconv.Itoa(Roomid),
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1111,9 +1126,10 @@ func (t *biliApi) GetLiveBuvid(Roomid int) (err error) {
 			`DNT`:                       `1`,
 			`Upgrade-Insecure-Requests`: `1`,
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1134,9 +1150,10 @@ func (t *biliApi) GetOtherCookies() (err error) {
 		Header: map[string]string{
 			`Cookie`: t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1171,9 +1188,10 @@ func (t *biliApi) DoSign() (err error, HadSignDays int) {
 			`Referer`:         "https://live.bilibili.com/all",
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1226,9 +1244,10 @@ func (t *biliApi) GetWebGetSignInfo() (err error, Status int) {
 			`Referer`:         "https://live.bilibili.com/all",
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 
 	if err != nil {
@@ -1294,9 +1313,10 @@ func (t *biliApi) SetFansMedal(medalId int) (err error) {
 			`Content-Type`: `application/x-www-form-urlencoded; charset=UTF-8`,
 			`Referer`:      `https://passport.bilibili.com/login`,
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1355,9 +1375,10 @@ func (t *biliApi) GetFansMedal(RoomID, TargetID int) (err error, res []struct {
 				`Cookie`:  t.GetCookiesS(),
 				`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", RoomID),
 			},
-			Proxy:   t.proxy,
-			Timeout: 10 * 1000,
-			Retry:   2,
+			Proxy:              t.proxy,
+			DisableSystemProxy: t.disableSystemProxy,
+			Timeout:            10 * 1000,
+			Retry:              2,
 		})
 		if err != nil {
 			return
@@ -1507,9 +1528,10 @@ func (t *biliApi) GetWearedMedal(uid, upUid int) (err error, res struct {
 		Header: map[string]string{
 			`Cookie`: t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1603,9 +1625,10 @@ func (t *biliApi) GetNav() (err error, res struct {
 			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1681,9 +1704,10 @@ func (t *biliApi) GenWebTicket() (err error) {
 			`Referer`:         `https://t.bilibili.com/pages/nav/index_new`,
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1740,9 +1764,10 @@ func (t *biliApi) GetGuardNum(upUid int, roomid int) (err error, GuardNum int) {
 			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1797,9 +1822,10 @@ func (t *biliApi) GetPopularAnchorRank(uid int, upUid int, roomid int) (err erro
 			`Referer`:         fmt.Sprintf("https://live.bilibili.com/%d", roomid),
 			`Cookie`:          t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 3 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            3 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1850,9 +1876,10 @@ func (t *biliApi) GetDanmuMedalAnchorInfo(Uid string, Roomid int) (err error, rf
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 			`Cookie`:  t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -1909,8 +1936,9 @@ func (t *biliApi) GetDanmuInfo(Roomid int) (err error, res struct {
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 			`Cookie`:  t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
 	})
 	if err != nil {
 		return
@@ -1998,9 +2026,10 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 			`Cookie`:  t.GetCookiesS(),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -2175,9 +2204,10 @@ func (t *biliApi) GetInfoByRoom(Roomid int) (err error, res struct {
 		Header: map[string]string{
 			`Referer`: fmt.Sprintf("https://live.bilibili.com/%d", Roomid),
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	})
 	if err != nil {
 		return
@@ -2642,8 +2672,9 @@ func (t *biliApi) GetRoomBaseInfo(Roomid int) (err error, res struct {
 		Header: map[string]string{
 			`Referer`: "https://link.bilibili.com/p/center/index",
 		},
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
 	})
 	if err != nil {
 		return
@@ -2727,10 +2758,11 @@ func (t *biliApi) LoginQrPoll(QrcodeKey string) (err error, code int) {
 	r := t.pool.Get()
 	defer t.pool.Put(r)
 	if e := r.Reqf(reqf.Rval{
-		Url:     `https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=` + QrcodeKey + `&source=main-fe-header`,
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Url:                `https://passport.bilibili.com/x/passport-login/web/qrcode/poll?qrcode_key=` + QrcodeKey + `&source=main-fe-header`,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	}); e != nil {
 		err = e
 		return
@@ -2770,15 +2802,20 @@ func (t *biliApi) SetProxy(proxy string) {
 	t.proxy = proxy
 }
 
+func (t *biliApi) SetDisableSystemProxy(disableSystemProxy bool) {
+	t.disableSystemProxy = disableSystemProxy
+}
+
 // test
 func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 	r := t.pool.Get()
 	defer t.pool.Put(r)
 	if e := r.Reqf(reqf.Rval{
-		Url:     `https://passport.bilibili.com/x/passport-login/web/qrcode/generate?source=main-fe-header`,
-		Proxy:   t.proxy,
-		Timeout: 10 * 1000,
-		Retry:   2,
+		Url:                `https://passport.bilibili.com/x/passport-login/web/qrcode/generate?source=main-fe-header`,
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
 	}); e != nil {
 		err = e
 		return
