@@ -361,7 +361,7 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 	Is_live bool
 }) {
 
-	query := "page=1&page_size=10&order=online&platform=pc&user_type=1&search_type=bili_user&keyword=" + s
+	query := "gaia_vtoken=&from_source=web_search&page=1&page_size=10&order=online&platform=pc&user_type=1&search_type=live_user&keyword=" + s
 
 	if e, v := t.GetNav(); e != nil {
 		err = e
@@ -376,12 +376,22 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 	req := t.pool.Get()
 	defer t.pool.Put(req)
 	err = req.Reqf(reqf.Rval{
+		Method:             "GET",
 		Url:                "https://api.bilibili.com/x/web-interface/wbi/search/type?" + query,
 		Proxy:              t.proxy,
 		DisableSystemProxy: t.disableSystemProxy,
 		Header: map[string]string{
-			`Cookie`:  t.GetCookiesS(),
-			`Referer`: `https://search.bilibili.com/`,
+			`Host`:            `api.bilibili.com`,
+			`Accept`:          `*/*`,
+			`Accept-Encoding`: `gzip, deflate, br, zstd`,
+			`Cookie`:          t.GetCookiesS(),
+			`User-Agent`:      UA,
+			`Connection`:      `keep-alive`,
+			`Pragma`:          `no-cache`,
+			`Cache-Control`:   `no-cache`,
+			`Accept-Language`: `zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2`,
+			`Origin`:          `https://search.bilibili.com/`,
+			`Referer`:         `https://search.bilibili.com/upuser?keyword=&from_source=web_search&spm_id_from=333.1007&search_source=5`,
 		},
 		Timeout: 10 * 1000,
 		Retry:   2,
@@ -396,9 +406,9 @@ func (t *biliApi) SearchUP(s string) (err error, res []struct {
 		TTL     int    `json:"ttl"`
 		Data    struct {
 			Result []struct {
-				IsLive int    `json:"is_live"`
+				IsLive int    `json:"live_status"`
 				Uname  string `json:"uname"`
-				Roomid int    `json:"room_id"`
+				Roomid int    `json:"roomid"`
 			} `json:"result"`
 		} `json:"data"`
 	}
