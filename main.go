@@ -1669,7 +1669,7 @@ func (t *biliApi) GetNav() (err error, res struct {
 	f(&res, time.Hour)
 
 	req.Response(func(r *http.Response) error {
-		t.SetCookies(r.Cookies())
+		t.SetCookies(r.Cookies(), !res.IsLogin)
 		return nil
 	})
 
@@ -2154,10 +2154,13 @@ func (t *biliApi) GetRoomPlayInfo(Roomid int, Qn int) (err error, res struct {
 }
 
 // SetCookies implements biliApiInter.
-func (t *biliApi) SetCookies(cookies []*http.Cookie) {
+func (t *biliApi) SetCookies(cookies []*http.Cookie, overwrite ...bool) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	var someRenew bool
+	if len(overwrite) > 0 && overwrite[0] {
+		t.cookies = t.cookies[:0]
+	}
 	for i := 0; i < len(cookies); i++ {
 		found := false
 		for k := 0; k < len(t.cookies); k++ {
