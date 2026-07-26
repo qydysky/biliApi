@@ -25,7 +25,10 @@ import (
 const id = "github.com/qydysky/bili_danmu/F.biliApi"
 const UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.3`
 
-var ErrNeedLogin = errors.New(`ErrNeedLogin`)
+var (
+	ErrNeedLogin = errors.New(`ErrNeedLogin`)
+	ErrNoLogin   = errors.New(`ErrNoLogin`)
+)
 
 func init() {
 	if e := cmp.Register[biliApiInter](id, &biliApi{
@@ -2159,21 +2162,25 @@ func (t *biliApi) SetCookies(cookies []*http.Cookie, overwrite ...bool) {
 	defer t.lock.Unlock()
 	var someRenew bool
 	if len(overwrite) > 0 && overwrite[0] {
+		someRenew = true
 		t.cookies = t.cookies[:0]
 	}
-	for i := 0; i < len(cookies); i++ {
+	for _, v := range cookies {
 		found := false
-		for k := 0; k < len(t.cookies); k++ {
-			if t.cookies[k].Name == cookies[i].Name {
-				someRenew = someRenew || t.cookies[k].Value != cookies[i].Value
-				t.cookies[k].Value = cookies[i].Value
-				found = true
+		for i2, v2 := range t.cookies {
+			if found = v.Name == v2.Name; found {
+				someRenew = someRenew || v.Value != v2.Value
+				if v.Value == `` {
+					t.cookies = append(t.cookies[:i2], t.cookies[i2+1:]...)
+				} else {
+					v2.Value = v.Value
+				}
 				break
 			}
 		}
-		if !found {
-			t.cookies = append(t.cookies, cookies[i])
+		if !found && v.Value != `` {
 			someRenew = true
+			t.cookies = append(t.cookies, v)
 		}
 	}
 	if t.cookiesCallback != nil && someRenew {
@@ -2870,6 +2877,39 @@ func (t *biliApi) LoginQrCode() (err error, imgUrl string, QrcodeKey string) {
 		return nil
 	})
 	return
+}
+
+func (t *biliApi) Logout() error {
+	r := t.pool.Get()
+	defer t.pool.Put(r)
+
+	csrf := ""
+	if e, t := t.GetCookie(`bili_jct`); e == nil {
+		csrf = t
+	} else {
+		return ErrNoLogin
+	}
+
+	if e := r.Reqf(reqf.Rval{
+		Url: `https://passport.bilibili.com/login/exit/v2`,
+		Header: map[string]string{
+			`Referer`: `https://www.bilibili.com/`,
+			`Cookie`:  t.GetCookiesS(),
+		},
+		Proxy:              t.proxy,
+		DisableSystemProxy: t.disableSystemProxy,
+		Timeout:            10 * 1000,
+		Retry:              2,
+		PostStr:            fmt.Sprintf("biliCSRF=%s&gourl=https%3A%2F%2Fwww.bilibili.com%2F", csrf),
+	}); e != nil {
+		return e
+	} else {
+		r.Response(func(r *http.Response) error {
+			t.SetCookies(r.Cookies(), r.StatusCode == 200)
+			return nil
+		})
+		return nil
+	}
 }
 
 // bilibili wrid wts 计算

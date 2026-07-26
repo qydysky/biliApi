@@ -24,6 +24,7 @@ type biliApiInter interface {
 	LikeReport(hitCount, uid, roomid, upUid int) (err error)
 	LoginQrCode() (err error, imgUrl string, QrcodeKey string)
 	LoginQrPoll(QrcodeKey string) (err error, code int)
+	Logout() error
 	GetOtherCookies() (err error)
 	GetLiveBuvid(Roomid int) (err error)
 	GetRoomBaseInfo(Roomid int) (err error, res struct {
