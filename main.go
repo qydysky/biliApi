@@ -1669,7 +1669,7 @@ func (t *biliApi) GetNav() (err error, res struct {
 		res.WbiImg.SubURL = j.Data.WbiImg.SubURL
 	}
 
-	f(&res, time.Hour)
+	f(&res, time.Minute)
 
 	req.Response(func(r *http.Response) error {
 		t.SetCookies(r.Cookies(), !res.IsLogin)
